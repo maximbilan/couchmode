@@ -161,6 +161,17 @@ header {
   border-color: color-mix(in srgb, var(--danger) 50%, transparent);
 }
 
+.agent-pill {
+  margin-left: auto;
+  font-family: inherit;
+  color: var(--accent);
+  border-color: color-mix(in srgb, var(--accent) 40%, transparent);
+}
+
+.agent-pill + .pill {
+  margin-left: 0;
+}
+
 main {
   flex: 1;
   overflow-y: auto;

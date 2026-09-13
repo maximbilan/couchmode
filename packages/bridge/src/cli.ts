@@ -170,6 +170,19 @@ async function projectName(cwd: string): Promise<string> {
   return basename(cwd);
 }
 
+/**
+ * Print the agent's own login command when it fails to start.
+ *
+ * Couchmode never builds a login flow of its own: authentication belongs to the
+ * agent's CLI. This only ever reaches the terminal, never a connected client.
+ */
+function printLoginHint(definition: AgentDefinition): void {
+  if (!definition.loginHint) return;
+  process.stdout.write(
+    `\nIf ${definition.name} is not logged in, log in with its own CLI first:\n\n    ${definition.loginHint}\n\n`,
+  );
+}
+
 async function bridgeVersion(): Promise<string> {
   try {
     const pkg = JSON.parse(await readFile(join(here, "..", "package.json"), "utf8")) as {
@@ -216,26 +229,33 @@ async function main(): Promise<void> {
   const [name, branch] = await Promise.all([projectName(cwd), gitBranch(cwd)]);
   const isFake = options.fake !== false;
 
-  // --- agent transport -----------------------------------------------------
-  let agent: AgentLike;
-  if (isFake) {
-    const fixturePath = await resolveFixturePath(options.fake);
-    const fixture = await loadFixture(fixturePath);
-    info(`fake mode: replaying ${fixturePath} (${fixture.entries.length} messages)`);
-    agent = createFakeAgent(fixture);
-  } else {
-    info(`spawning ${definition.command} ${definition.args.join(" ")}`);
-    agent = spawnAgent(definition, cwd);
-  }
+  // The agent currently running. Switching replaces it; the ACP session does
+  // not survive, because a session belongs to the agent that created it.
+  let current: AgentDefinition = definition;
 
-  // Recording taps the ACP stream itself, so a `--fake` run records exactly the
-  // same way a live one does. That is what makes a replay checkable against the
-  // original: scripts/verify-fixture.mjs diffs the two recordings.
-  if (options.record) {
-    const recorder = createRecorder(options.record, definition.name, cwd);
-    agent = { ...agent, stream: teeStream(agent.stream, recorder) };
-    info(`recording to ${options.record}`);
-    process.on("exit", () => void recorder.close());
+  /** Build the transport for one run: a fixture replay, or a spawned process. */
+  async function createTransport(target: AgentDefinition): Promise<AgentLike> {
+    let transport: AgentLike;
+    if (isFake) {
+      const fixturePath = await resolveFixturePath(options.fake);
+      const fixture = await loadFixture(fixturePath);
+      info(`fake mode: replaying ${fixturePath} (${fixture.entries.length} messages)`);
+      transport = createFakeAgent(fixture);
+    } else {
+      info(`spawning ${target.command} ${target.args.join(" ")}`);
+      transport = spawnAgent(target, cwd);
+    }
+
+    // Recording taps the ACP stream itself, so a `--fake` run records exactly
+    // the same way a live one does. That is what makes a replay checkable
+    // against the original: scripts/verify-fixture.mjs diffs the two.
+    if (options.record) {
+      const recorder = createRecorder(options.record, target.name, cwd);
+      transport = { ...transport, stream: teeStream(transport.stream, recorder) };
+      info(`recording to ${options.record}`);
+      process.on("exit", () => void recorder.close());
+    }
+    return transport;
   }
 
   // --- server --------------------------------------------------------------
@@ -249,13 +269,18 @@ async function main(): Promise<void> {
   const buildHello = (clients: ConnectedClient[]): ServerMessage => ({
     type: "hello",
     bridgeVersion: version,
-    agentName: definition.name,
-    agentTitle: definition.title ?? definition.name,
+    agentName: current.name,
+    agentTitle: current.title ?? current.name,
     agentInfo: acp?.agentInfo ?? null,
     cwd,
     projectName: name,
     gitBranch: branch,
     clients,
+    agents: registry.list().map((entry) => ({
+      name: entry.name,
+      title: entry.title ?? entry.name,
+      active: entry.name === current.name,
+    })),
     status: acp?.currentStatus ?? "starting",
     mode: acp?.modes
       ? {
@@ -283,24 +308,79 @@ async function main(): Promise<void> {
       if (!ok) log("ws", "--", `permission ${requestId.slice(0, 8)} already resolved`);
     },
     onCancel: () => acp?.cancel(),
+    onSwitchAgent: (target) => void switchAgent(target),
   });
   hub.attach(server);
 
-  acp = new CouchmodeAcpClient(
-    agent,
-    cwd,
-    {
-      onSessionUpdate: (notification) => hub.broadcast({ type: "acp", payload: notification }),
-      onStatus: (status, detail) =>
-        hub.broadcast({ type: "agent_status", status, ...(detail ? { detail } : {}) }),
-      onPermissionRequest: (requestId, request) =>
-        hub.broadcast({ type: "permission_request", requestId, request }),
-      onPermissionResolved: (requestId, optionId, by) =>
-        hub.broadcast({ type: "permission_resolved", requestId, optionId, by }),
-    },
-    version,
-    options.mode ? [options.mode] : definition.preferredModes,
-  );
+  /**
+   * Bring up an agent and its ACP session. Safe to call again: the previous
+   * agent is stopped first.
+   *
+   * Returns the error text when the agent could not be started, so the caller
+   * can surface the agent's own words rather than inventing a message.
+   */
+  async function startAgent(target: AgentDefinition): Promise<string | null> {
+    await acp?.stop();
+    acp = null;
+    current = target;
+
+    const transport = await createTransport(target);
+    acp = new CouchmodeAcpClient(
+      transport,
+      cwd,
+      {
+        onSessionUpdate: (notification) => hub.broadcast({ type: "acp", payload: notification }),
+        onStatus: (status, detail) =>
+          hub.broadcast({ type: "agent_status", status, ...(detail ? { detail } : {}) }),
+        onPermissionRequest: (requestId, request) =>
+          hub.broadcast({ type: "permission_request", requestId, request }),
+        onPermissionResolved: (requestId, optionId, by) =>
+          hub.broadcast({ type: "permission_resolved", requestId, optionId, by }),
+      },
+      version,
+      options.mode ? [options.mode] : target.preferredModes,
+    );
+
+    try {
+      await acp.start();
+      info(`agent ready: ${target.name}`);
+      hub.announce();
+      return null;
+    } catch (error) {
+      const detail = errorText(error);
+      const stderr = transport.stderr().trim();
+      warn(`agent failed to start: ${detail}`);
+      if (stderr) process.stdout.write(`\n--- agent output ---\n${stderr}\n--------------------\n`);
+      printLoginHint(target);
+      hub.broadcast({ type: "agent_status", status: "error", detail: stderr || detail });
+      hub.announce();
+      return stderr || detail;
+    }
+  }
+
+  /** Swap to a different agent from agents.json, at a client's request. */
+  async function switchAgent(targetName: string): Promise<void> {
+    const target = registry.get(targetName);
+    if (!target) {
+      hub.broadcast({ type: "error", message: `unknown agent "${targetName}"` });
+      return;
+    }
+    if (isFake) {
+      hub.broadcast({
+        type: "error",
+        message: "fake mode replays one recording; restart the bridge to change agents",
+      });
+      return;
+    }
+    if (target.name === current.name) return;
+
+    info(`switching agent: ${current.name} -> ${target.name}`);
+    // Everything on screen belongs to a session that is about to end.
+    hub.clearHistory();
+    hub.broadcast({ type: "session_reset", reason: "agent_switched" });
+    hub.broadcast({ type: "agent_status", status: "starting" });
+    await startAgent(target);
+  }
 
   await new Promise<void>((done) => server.listen(options.port, options.host, done));
 
@@ -324,28 +404,9 @@ async function main(): Promise<void> {
     "  uses the login you already have.",
   ]);
 
-  try {
-    await acp.start();
-    info("agent ready");
-    // Anyone who paired while the agent was still starting has a `hello` with
-    // no agentInfo and no session mode; correct them now.
-    hub.announce();
-  } catch (error) {
-    const detail = errorText(error);
-    const stderr = agent.stderr().trim();
-    warn(`agent failed to start: ${detail}`);
-    if (stderr) process.stdout.write(`\n--- agent output ---\n${stderr}\n--------------------\n`);
-    if (definition.loginHint) {
-      process.stdout.write(
-        `\nIf ${definition.name} is not logged in, log in with its own CLI first:\n\n    ${definition.loginHint}\n\n`,
-      );
-    }
-    hub.broadcast({
-      type: "agent_status",
-      status: "error",
-      detail: stderr || detail,
-    });
-  }
+  // Anyone who paired while the agent was still starting gets a corrected
+  // `hello` from inside startAgent once the session exists.
+  await startAgent(definition);
 
   const shutdown = () => {
     info("shutting down");

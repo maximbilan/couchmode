@@ -67,6 +67,11 @@ spatially — there is no tab order, because a remote has no Tab key.
 | OK      | activate; on the prompt bar it opens a text field; on Activity it expands the agent's thinking |
 | Back    | close the composer, or answer a permission request with its deny option                        |
 
+Focus the agent's name in the top bar (or press **MENU**) to switch agents
+without restarting the bridge. Switching ends the ACP session — a session
+belongs to the agent that created it — so the transcript is cleared and the
+picker says so before you choose.
+
 When the agent asks permission, a modal takes focus and shows the agent's own
 options in the order it gave them. See
 [`docs/acp-on-tv.md`](docs/acp-on-tv.md#which-button-the-remote-starts-on) for
@@ -175,7 +180,7 @@ couchmode [options]
 - [x] **M1** — ACP bridge + phone client, recorded fixture, `--fake` replay
 - [x] **M2** — `/tv` 10-foot UI: focus manager, permission modal, diff panel
 - [x] **M3** — Fire TV shell (Kotlin WebView), remote control, Back handling
-- [ ] **M4** — real projects, Codex/Gemini/Kiro verified, reconnect, voice
+- [x] **M4** — real projects, more agents, agent picker, reconnect, voice
 - [ ] **M5** — demo assets
 
 ## Documentation

@@ -27,6 +27,46 @@ for the record.
 - **Our handling:** `preferredModes` in `agents.json`; see
   [`acp-on-tv.md`](./acp-on-tv.md#session-modes-the-one-that-matters).
 
+### `gemini --acp` hangs silently when folder trust cannot be granted
+
+- **Where:** Gemini CLI 0.46.0
+- **What:** started in ACP mode in an untrusted directory, the agent writes
+  **nothing** to stdout or stderr and never answers `initialize`. In normal
+  (non-ACP) mode the same CLI prints a clear message naming `--skip-trust`.
+- **Repro:** in a directory the CLI has not been told to trust, spawn
+  `gemini --acp`, write one line of JSON to its stdin and read for 30 seconds:
+
+  ```json
+  {
+    "jsonrpc": "2.0",
+    "id": 0,
+    "method": "initialize",
+    "params": {
+      "protocolVersion": 1,
+      "clientCapabilities": { "fs": { "readTextFile": true, "writeTextFile": true } }
+    }
+  }
+  ```
+
+  Nothing arrives on stdout or stderr. Add `--skip-trust` and the same request
+  is answered immediately. Running the CLI without `--acp` in the same
+  directory prints a message naming the flag.
+
+- **Assessment:** a client cannot distinguish this from a slow start, and there
+  is no error text to show a user. Emitting the same message it already writes
+  in interactive mode, or exiting non-zero, would make it diagnosable.
+- **Our handling:** `--skip-trust` in the bundled `agents.json`, plus a 30s
+  handshake timeout in the bridge so any silent agent surfaces as an error
+  rather than an indefinite "Starting".
+
+### `--experimental-acp` is deprecated in Gemini CLI
+
+- **Where:** Gemini CLI 0.46.0
+- **What:** `--experimental-acp` still works but prints a deprecation notice
+  pointing at `--acp`. Documentation and third-party guides still widely say
+  `--experimental-acp`.
+- **Our handling:** the bundled `agents.json` uses `--acp`.
+
 ### `node >= 22` is required by the Claude adapter
 
 - **Where:** `@agentclientprotocol/claude-agent-acp@0.76.0` `engines.node`

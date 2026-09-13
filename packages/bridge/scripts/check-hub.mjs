@@ -110,7 +110,39 @@ check(
   late.received.filter((m) => m.type === "prompt_draft").length === 0,
 );
 
-for (const connection of [tv, phone, late]) connection.socket.close();
+// --- reconnect and replay -------------------------------------------------
+// A client that drops must be able to come back and catch up. The bridge holds
+// the ACP session, so nothing about the agent changes while it is away.
+const beforeDrop = await open("tv");
+const replayCount = beforeDrop.received.find((m) => m.type === "replay_end")?.count ?? 0;
+beforeDrop.socket.close();
+await sleep(400);
+
+const reconnected = await open("tv");
+const replay = reconnected.received.filter((m) => m.type === "acp");
+const end = reconnected.received.find((m) => m.type === "replay_end");
+check(
+  "a reconnecting client is caught up then told replay_end",
+  !!end,
+  `${end?.count ?? 0} messages`,
+);
+check(
+  "replay carries the session updates it missed",
+  (end?.count ?? 0) >= replayCount && replay.every((m) => !!m.payload?.update),
+  `${replay.length} acp updates replayed`,
+);
+check(
+  "hello arrives before the replay",
+  reconnected.received[0]?.type === "hello",
+  reconnected.received[0]?.type,
+);
+check(
+  "hello lists the agents available to switch to",
+  Array.isArray(reconnected.received[0]?.agents) && reconnected.received[0].agents.length > 0,
+  (reconnected.received[0]?.agents ?? []).map((a) => a.name).join(","),
+);
+
+for (const connection of [tv, phone, late, reconnected]) connection.socket.close();
 bridge.kill();
 
 console.log(`\n=== ${passed} passed, ${failures.length} failed ===`);

@@ -29,13 +29,29 @@ run_case() {
   local name="$1" fixture="$2" code="$3" port="$4" test="$5"
 
   pkill -9 -f "remote-debugging-port=9222" 2>/dev/null
-  pkill -f "couchmode-tv-check" 2>/dev/null
+  # Free the port outright: a bridge left over from a previous run would make
+  # this one silently reuse an already-consumed replay.
+  lsof -ti "tcp:$port" 2>/dev/null | xargs -r kill -9 2>/dev/null
   sleep 1
   rm -rf "$OUT/chrome-profile"
 
   COUCHMODE_TV_CHECK=1 node "$REPO/packages/bridge/dist/cli.js" \
     --fake "$fixture" --code "$code" --port "$port" > "$OUT/bridge-$port.log" 2>&1 &
   local bridge_pid=$!
+
+  # Fail loudly rather than testing against whatever else is on the port.
+  local ready=0
+  for _ in $(seq 1 40); do
+    if curl -s -m 2 "http://localhost:$port/healthz" > /dev/null; then ready=1; break; fi
+    sleep 0.5
+  done
+  if [ $ready -eq 0 ]; then
+    echo "✗ $name: bridge failed to start on port $port" >&2
+    tail -5 "$OUT/bridge-$port.log" >&2
+    FAILED=1
+    kill "$bridge_pid" 2>/dev/null
+    return 0
+  fi
 
   "$CHROME" --headless=new --remote-debugging-port=9222 --window-size=1920,1080 \
     --user-data-dir="$OUT/chrome-profile" --no-first-run --no-default-browser-check \
@@ -62,6 +78,8 @@ run_case "tv" \
   "$REPO/packages/bridge/fixtures/claude-readme-tests.jsonl" 123456 7801 tv-acceptance.mjs
 run_case "tv-synthetic" \
   "$REPO/packages/bridge/fixtures/synthetic-plan-and-thoughts.jsonl" 777777 7802 tv-synthetic.mjs
+run_case "phone" \
+  "$REPO/packages/bridge/fixtures/claude-readme-tests.jsonl" 555555 7803 phone-acceptance.mjs
 
 pkill -9 -f "remote-debugging-port=9222" 2>/dev/null
 echo ""
