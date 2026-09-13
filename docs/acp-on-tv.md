@@ -155,8 +155,29 @@ This is the interaction Couchmode exists for.
    `permission_resolved`, showing who answered.
 5. The response is `{ outcome: { outcome: "selected", optionId } }`.
 
-Default focus is a heuristic on the tool: allow-type option for read-only kinds,
-deny-type for `execute`. Back/Escape always maps to the deny option.
+### Which button the remote starts on
+
+ACP gives each option a `kind`, which is the hint a client needs to pick a
+default. Couchmode classifies the request in three, not two:
+
+| class         | from                                                 | default focus         |
+| ------------- | ---------------------------------------------------- | --------------------- |
+| `read_only`   | kind `read`, `search`, `fetch`, `think`              | first allow option    |
+| `destructive` | kind `execute` or `delete`, or a shell-looking title | first **deny** option |
+| `modifying`   | kind `edit`, `move`, `other`, or unset               | first allow option    |
+
+An edit is neither a read nor a shell command, and collapsing it into either
+gets the default wrong. Edits start on allow because the diff is already on
+screen beside the modal and the viewer is watching it happen; anything that
+runs a command or deletes starts on deny, so a reflexive OK press can never
+execute something.
+
+The title heuristic exists for agents that leave `kind` unset: a title matching
+a shell command shape (`rm`, `sudo`, `git`, a pipe, a redirect) is treated as
+destructive.
+
+Back/Escape is always the deny option, whatever the default was, so the
+cautious answer is never more than one press away.
 
 Two rules the spec is strict about, and Couchmode follows:
 
@@ -165,6 +186,72 @@ Two rules the spec is strict about, and Couchmode follows:
 - A client may auto-answer. Couchmode only does so on a **10-minute timeout**,
   and only in the denying direction: first `reject_once`, else `reject_always`,
   else the last option. Nothing is ever auto-allowed by inactivity.
+
+## The 10-foot layout
+
+Sized for 1920x1080 at about three metres: body text 28px, the permission
+summary 44px, every actionable control at least 64px tall, and a 3px focus ring
+in a colour used for nothing else.
+
+```
+┌─ project · branch ───────────────── agent · status · clients ─┐
+│                                                               │
+│  Activity (60%)                    │  Changes (40%)           │
+│  agent text, tool rows, plan       │  latest diff, +N −M      │
+│                                    │                          │
+├───────────────────────────────────────────────────────────────┤
+│  Ask the agent… (or type on your phone)            [ Stop ]   │
+└───────────────────────────────────────────────────────────────┘
+```
+
+### Focus is spatial, not tab order
+
+A remote has four arrows, Enter and Back. Tab order cannot express "the thing to
+the right of this", so focus moves by geometry: from the focused element's rect,
+pick the nearest candidate whose centre lies in the pressed direction, weighting
+cross-axis drift heavily so "right" prefers a true neighbour.
+
+Panels are scrollers: up/down pan their content and only release the key back to
+the focus manager once the edge is reached, so focus leaves a panel exactly when
+there is nothing left to scroll.
+
+A permission request pushes a focus _layer_. Only the top layer is navigable, so
+the feed underneath cannot be reached by accident while the agent is blocked
+waiting for an answer.
+
+### What the feed does with each item
+
+- **Agent text** renders as a small markdown subset: headings, fenced code,
+  bullets, inline code, bold. A 10-foot UI needs very little of it.
+- **Thoughts** are clamped to two lines. Reasoning is reassuring at a glance and
+  unreadable in bulk from a sofa; Enter on the Activity panel expands them all.
+- **Tool calls** are one compact row each: kind icon, title, status. Titles can
+  be whole heredocs, so the row shows the first line only.
+- **Plans** render as a checklist, with entry `status` driving the mark and
+  strike-through.
+
+The feed auto-scrolls, unless the viewer has deliberately scrolled up to read,
+in which case it stops until they return to the bottom.
+
+### The status pill
+
+"Running tool" is not an ACP status and not a bridge status - it is derived on
+the client from `prompting` plus any tool call in `in_progress`. From across a
+room, "Thinking" and "running your test suite" should not look the same.
+
+### The diff panel
+
+Shows the most recent `type: "diff"` tool-call content, with the path and
+`+N −M` in the header. It is capped at 400 rendered lines; a whole-file diff can
+be thousands, and nobody reads that from a sofa.
+
+## One non-ACP message: `prompt_draft`
+
+The prompt bar mirrors what is being typed on the phone, live, before it is
+sent. Nothing in ACP carries that - it is a property of having two clients
+attached to one session - so it is a bridge-level message, relayed to the other
+clients and deliberately excluded from the replay history. It never reaches the
+agent.
 
 ## Paths
 

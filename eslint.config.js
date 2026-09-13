@@ -23,11 +23,12 @@ const nodeGlobals = {
   clearInterval: "readonly",
   queueMicrotask: "readonly",
   fetch: "readonly",
+  WebSocket: "readonly",
 };
 
 export default tseslint.config(
   {
-    ignores: ["**/dist/**", "**/node_modules/**", "apps/**", "**/*.d.ts"],
+    ignores: ["**/dist/**", "**/node_modules/**", "apps/**", "**/*.d.ts", "**/.tv-check/**"],
   },
   js.configs.recommended,
   ...tseslint.configs.recommended,

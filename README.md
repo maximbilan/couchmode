@@ -51,6 +51,27 @@ The replay includes two permission requests and a file diff, and blocks until
 you actually submit a prompt — the bridge's ACP code path is identical to a
 live run.
 
+Open `http://localhost:7777/tv` in a browser at 1920×1080 to drive the 10-foot
+UI with the arrow keys, Enter and Escape — exactly the buttons a Fire TV remote
+has. Nothing in `/tv` needs a pointer.
+
+## The TV UI
+
+`/tv` is designed for 1920×1080 viewed from about three metres: body text 28px,
+controls at least 64px tall, and a bright 3px focus ring. Focus moves
+spatially — there is no tab order, because a remote has no Tab key.
+
+| Button  | What it does                                                                                   |
+| ------- | ---------------------------------------------------------------------------------------------- |
+| ▲ ▼ ◀ ▶ | move focus, or scroll the panel you are in                                                     |
+| OK      | activate; on the prompt bar it opens a text field; on Activity it expands the agent's thinking |
+| Back    | close the composer, or answer a permission request with its deny option                        |
+
+When the agent asks permission, a modal takes focus and shows the agent's own
+options in the order it gave them. See
+[`docs/acp-on-tv.md`](docs/acp-on-tv.md#which-button-the-remote-starts-on) for
+which button the remote starts on and why.
+
 ## Fire TV setup
 
 Lands in M3.
@@ -125,7 +146,7 @@ couchmode [options]
 ## Roadmap
 
 - [x] **M1** — ACP bridge + phone client, recorded fixture, `--fake` replay
-- [ ] **M2** — `/tv` 10-foot UI: focus manager, permission modal, diff panel
+- [x] **M2** — `/tv` 10-foot UI: focus manager, permission modal, diff panel
 - [ ] **M3** — Fire TV shell (Kotlin WebView), remote control, Back handling
 - [ ] **M4** — real projects, Codex/Gemini/Kiro verified, reconnect, voice
 - [ ] **M5** — demo assets

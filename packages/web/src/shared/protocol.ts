@@ -63,6 +63,13 @@ export interface PermissionResolvedMessage {
   by: ClientType | "timeout" | "cancelled";
 }
 
+/** Draft text relayed from another client, so the TV mirrors phone typing. */
+export interface PromptDraftMessage {
+  type: "prompt_draft";
+  text: string;
+  from: ClientType;
+}
+
 export interface ReplayEndMessage {
   type: "replay_end";
   count: number;
@@ -83,6 +90,7 @@ export type ServerMessage =
   | AcpMessage
   | PermissionRequestMessage
   | PermissionResolvedMessage
+  | PromptDraftMessage
   | ReplayEndMessage
   | PongMessage
   | ErrorMessage;
@@ -181,4 +189,5 @@ export type ClientMessage =
   | { type: "submit_prompt"; text: string }
   | { type: "permission_decision"; requestId: string; optionId: string }
   | { type: "cancel" }
+  | { type: "prompt_draft"; text: string }
   | { type: "ping" };

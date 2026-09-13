@@ -55,6 +55,15 @@ export const cancelMessageSchema = z.object({
   type: z.literal("cancel"),
 });
 
+/**
+ * Live draft text, so the TV can mirror what is being typed on the phone
+ * before it is sent. Ephemeral: never stored in the replay history.
+ */
+export const promptDraftMessageSchema = z.object({
+  type: z.literal("prompt_draft"),
+  text: z.string().max(32_000),
+});
+
 export const pingMessageSchema = z.object({
   type: z.literal("ping"),
 });
@@ -64,6 +73,7 @@ export const clientMessageSchema = z.discriminatedUnion("type", [
   submitPromptMessageSchema,
   permissionDecisionMessageSchema,
   cancelMessageSchema,
+  promptDraftMessageSchema,
   pingMessageSchema,
 ]);
 
@@ -83,6 +93,7 @@ export type ServerMessage =
   | AcpMessage
   | PermissionRequestMessage
   | PermissionResolvedMessage
+  | PromptDraftMessage
   | ReplayEndMessage
   | PongMessage
   | ErrorMessage;
@@ -149,6 +160,13 @@ export interface PermissionResolvedMessage {
   /** null when the turn was cancelled - ACP outcome `cancelled` carries no option. */
   optionId: string | null;
   by: ClientType | "timeout" | "cancelled";
+}
+
+/** Draft text relayed from one client to the others. */
+export interface PromptDraftMessage {
+  type: "prompt_draft";
+  text: string;
+  from: ClientType;
 }
 
 export interface ReplayEndMessage {

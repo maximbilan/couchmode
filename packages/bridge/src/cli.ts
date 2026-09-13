@@ -327,6 +327,9 @@ async function main(): Promise<void> {
   try {
     await acp.start();
     info("agent ready");
+    // Anyone who paired while the agent was still starting has a `hello` with
+    // no agentInfo and no session mode; correct them now.
+    hub.announce();
   } catch (error) {
     const detail = errorText(error);
     const stderr = agent.stderr().trim();

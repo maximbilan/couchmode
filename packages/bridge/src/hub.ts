@@ -151,6 +151,10 @@ export class Hub {
         log("ws", "<-", `cancel from ${peer.clientType}`);
         this.handlers.onCancel(peer.clientType);
         break;
+      case "prompt_draft":
+        // Relayed straight to the other clients; too chatty to log per keystroke.
+        this.relay({ type: "prompt_draft", text: message.text, from: peer.clientType }, peer.id);
+        break;
     }
   }
 
@@ -160,11 +164,29 @@ export class Hub {
       .map((peer) => ({ id: peer.id, clientType: peer.clientType }));
   }
 
+  /**
+   * Re-send `hello` to every paired client.
+   *
+   * Clients can pair before the ACP session exists - the HTTP server binds
+   * first - so their initial `hello` carries no agent info or session mode.
+   * Re-announcing corrects them instead of leaving stale data on screen.
+   */
+  announce(): void {
+    this.announceClients();
+  }
+
   /** Re-send `hello` so every client's "clients connected" indicator is current. */
   private announceClients(): void {
     const hello = this.handlers.buildHello(this.connectedClients());
     for (const peer of this.peers.values()) {
       if (peer.paired) this.sendTo(peer, hello);
+    }
+  }
+
+  /** Send to every paired client except one. Not recorded for replay. */
+  private relay(message: ServerMessage, exceptPeerId: string): void {
+    for (const peer of this.peers.values()) {
+      if (peer.paired && peer.id !== exceptPeerId) this.sendTo(peer, message);
     }
   }
 

@@ -20,6 +20,12 @@ export interface FixtureHeader {
   /** Always the scrubbed placeholder, never a real path. */
   cwd: string;
   recordedAt: string;
+  /**
+   * Set on hand-written fixtures so nobody mistakes them for a recording.
+   * Absent on anything produced by `--record`.
+   */
+  synthetic?: true;
+  note?: string;
 }
 
 export interface FixtureEntry {

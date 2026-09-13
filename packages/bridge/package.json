@@ -20,7 +20,8 @@
     "dev": "node scripts/dev.js",
     "start": "node dist/cli.js",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "verify:fixture": "node scripts/verify-fixture.mjs"
+    "verify:fixture": "node scripts/verify-fixture.mjs",
+    "check:hub": "node scripts/check-hub.mjs"
   },
   "dependencies": {
     "@agentclientprotocol/sdk": "1.4.0",
