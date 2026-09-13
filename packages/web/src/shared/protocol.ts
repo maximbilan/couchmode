@@ -26,6 +26,8 @@ export interface HelloMessage {
   projectName: string;
   gitBranch: string | null;
   clients: ConnectedClient[];
+  /** Every agent in agents.json, for the agent picker. */
+  agents: AgentSummary[];
   status: AgentStatus;
   mode: { currentModeId: string; availableModes: SessionModeSummary[] } | null;
   fake: boolean;
@@ -35,6 +37,12 @@ export interface SessionModeSummary {
   id: string;
   name: string;
   description?: string | null;
+}
+
+export interface AgentSummary {
+  name: string;
+  title: string;
+  active: boolean;
 }
 
 export interface AgentStatusMessage {
@@ -70,6 +78,12 @@ export interface PromptDraftMessage {
   from: ClientType;
 }
 
+/** A new ACP session began, so the transcript on screen is stale. */
+export interface SessionResetMessage {
+  type: "session_reset";
+  reason: "agent_switched" | "agent_restarted";
+}
+
 export interface ReplayEndMessage {
   type: "replay_end";
   count: number;
@@ -91,6 +105,7 @@ export type ServerMessage =
   | PermissionRequestMessage
   | PermissionResolvedMessage
   | PromptDraftMessage
+  | SessionResetMessage
   | ReplayEndMessage
   | PongMessage
   | ErrorMessage;
@@ -190,4 +205,5 @@ export type ClientMessage =
   | { type: "permission_decision"; requestId: string; optionId: string }
   | { type: "cancel" }
   | { type: "prompt_draft"; text: string }
+  | { type: "switch_agent"; name: string }
   | { type: "ping" };

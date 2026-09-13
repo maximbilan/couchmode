@@ -245,6 +245,35 @@ Shows the most recent `type: "diff"` tool-call content, with the path and
 `+N −M` in the header. It is capped at 400 rendered lines; a whole-file diff can
 be thousands, and nobody reads that from a sofa.
 
+## Switching agents ends the session
+
+ACP has no notion of handing a session from one agent to another, and it
+should not: a `sessionId` is issued by `session/new` on a particular agent and
+means nothing to any other. So when a client asks for a different agent, the
+bridge stops the current process, spawns the new one, and runs the whole
+handshake again — `initialize`, `session/new`, `session/set_mode`.
+
+Everything on screen belonged to the old session, so the bridge clears its
+replay buffer and sends `session_reset`; clients drop their transcript and
+diff. The picker says this will happen before you choose it, because a TV that
+silently empties itself is alarming.
+
+`--fake` refuses to switch: a recording is one agent's session, and pretending
+otherwise would be a lie about what is on screen.
+
+## Handshake timeouts
+
+An agent that cannot start is not always an agent that says so. `gemini --acp`
+writes nothing at all — no stdout, no stderr — when its folder-trust check
+cannot be satisfied; it simply never replies to `initialize`. Left alone, the
+bridge would wait forever and the TV would sit on "Starting" with nothing to
+show and nothing to explain.
+
+So `initialize` and `session/new` are bounded (30s). On timeout the agent
+process is killed and the failure is surfaced as an `agent_status` error, with
+the agent's own stderr when it produced any, and its login command printed in
+the terminal.
+
 ## One non-ACP message: `prompt_draft`
 
 The prompt bar mirrors what is being typed on the phone, live, before it is
@@ -274,3 +303,15 @@ issues that same method, so nothing streams until a real user actually prompts.
 
 `node scripts/verify-fixture.mjs <original> <replay>` diffs the agent→client
 streams of a recording and its replay, normalising JSON-RPC ids and timing.
+
+## What is checked, and how
+
+| Suite                                       | Covers                                                 |
+| ------------------------------------------- | ------------------------------------------------------ |
+| `pnpm --filter @couchmode/bridge check:hub` | pairing, replay, reconnect, the draft relay            |
+| `pnpm --filter @couchmode/web check:render` | every fixture update through the view-model            |
+| `pnpm check:tv`                             | `/tv` and `/phone` in headless Chrome, arrow keys only |
+| `apps/tv-shell/scripts/ftv-check.sh`        | a real Fire TV, driven with real remote key events     |
+
+The browser and device suites drive the same code paths a person does: they
+press keys and read the DOM, rather than calling functions directly.

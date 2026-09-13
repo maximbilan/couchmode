@@ -10,6 +10,7 @@ import { CouchmodeClient } from "../shared/client.js";
 import type { ConnectionState } from "../shared/client.js";
 import type {
   AgentStatus,
+  AgentSummary,
   HelloMessage,
   PermissionOption,
   RequestPermissionRequest,
@@ -276,7 +277,7 @@ function renderMain(): void {
       <span class="project" id="project">…</span>
       <span class="branch" id="branch" hidden></span>
       <span class="spacer"></span>
-      <span class="agent" id="agent"></span>
+      <button class="agent" id="agent"></button>
       <span class="status-pill" id="status" data-status="starting">Starting</span>
       <span class="clients" id="clients"></span>
     </div>
@@ -331,6 +332,13 @@ function renderMain(): void {
 
   const cancel = app.querySelector<HTMLElement>("#cancel")!;
   focus.register(cancel, { priority: 4, onEnter: () => client.cancel() });
+
+  const agentButton = app.querySelector<HTMLElement>("#agent")!;
+  focus.register(agentButton, { priority: 5, onEnter: openAgentPicker });
+
+  // Short-press MENU is the shortcut; the Fire TV shell keeps long-press for
+  // its own settings form.
+  focus.setMenuHandler(openAgentPicker);
 
   focus.focusFirstInLayer();
 
@@ -600,6 +608,66 @@ function closePermission(requestId: string, optionId: string | null, by: string)
   }, 900);
 }
 
+// --------------------------------------------------------- agent picker
+
+let pickerOpen = false;
+
+/**
+ * Pick a different agent from `agents.json`.
+ *
+ * Switching ends the ACP session - a session belongs to the agent that created
+ * it - so the bridge replies with `session_reset` and the transcript is
+ * cleared. The picker says so rather than letting it be a surprise.
+ */
+function openAgentPicker(): void {
+  if (pickerOpen || screen !== "main" || modalRequestId !== null) return;
+  const agents = hello?.agents ?? [];
+  if (agents.length === 0) return;
+  pickerOpen = true;
+
+  const scrim = document.createElement("div");
+  scrim.className = "scrim";
+  scrim.id = "agent-picker";
+  scrim.innerHTML = `
+    <div class="modal picker">
+      <div class="kicker">Agent</div>
+      <div class="summary">Which agent should run?</div>
+      <div class="picker-note">Switching starts a new session. Everything on screen is cleared.</div>
+      <div class="options picker-options" id="agent-options"></div>
+    </div>
+  `;
+  app.append(scrim);
+
+  const optionsEl = scrim.querySelector<HTMLElement>("#agent-options")!;
+  agents.forEach((agent: AgentSummary, index) => {
+    const button = document.createElement("button");
+    button.className = "option agent-option";
+    button.dataset.active = String(agent.active);
+    button.textContent = agent.active ? `${agent.title} · running` : agent.title;
+    optionsEl.append(button);
+    focus.register(button, {
+      layer: "picker",
+      priority: index,
+      onEnter: () => {
+        if (!agent.active) client.switchAgent(agent.name);
+        closeAgentPicker();
+      },
+    });
+  });
+
+  focus.pushLayer("picker");
+  const activeIndex = agents.findIndex((agent) => agent.active);
+  const start = optionsEl.children[activeIndex >= 0 ? activeIndex : 0];
+  if (start instanceof HTMLElement) focus.focus(start);
+}
+
+function closeAgentPicker(): void {
+  if (!pickerOpen) return;
+  pickerOpen = false;
+  focus.popLayer();
+  app.querySelector("#agent-picker")?.remove();
+}
+
 // ----------------------------------------------------------------- wiring
 
 /**
@@ -610,6 +678,10 @@ function closePermission(requestId: string, optionId: string | null, by: string)
  * false, so Back closes what is open before it ever leaves the app.
  */
 export function handleBack(): boolean {
+  if (pickerOpen) {
+    closeAgentPicker();
+    return true;
+  }
   if (composerOpen) {
     // Back cancels the composer, which is what it means everywhere else.
     //
@@ -688,6 +760,14 @@ client.on("message", (message: ServerMessage) => {
       break;
     case "acp":
       transcript.apply(message.payload.update);
+      break;
+    case "session_reset":
+      // The transcript and diff belong to a session that no longer exists.
+      transcript.clear();
+      permissionQueue.length = 0;
+      if (feedEl) feedEl.innerHTML = `<div class="empty">Starting a new session…</div>`;
+      autoScroll = true;
+      paintDiff();
       break;
     case "permission_request":
       permissionQueue.push({ requestId: message.requestId, request: message.request });

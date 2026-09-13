@@ -40,6 +40,16 @@ const CLIENT_TITLE = "Couchmode";
 /** At most one prompt in flight; up to this many more may wait behind it. */
 export const PROMPT_QUEUE_LIMIT = 3;
 
+/**
+ * How long to wait for an agent to answer `initialize`.
+ *
+ * An agent that cannot start is not always an agent that says so. `gemini --acp`
+ * writes nothing at all to stdout or stderr when its account onboarding fails -
+ * it simply never replies - and without this the bridge would wait forever and
+ * the TV would sit on "Starting" with nothing to show.
+ */
+export const HANDSHAKE_TIMEOUT_MS = 30_000;
+
 export interface AcpClientEvents {
   onSessionUpdate(notification: SessionNotification): void;
   onStatus(status: AgentStatus, detail?: string): void;
@@ -143,16 +153,19 @@ export class CouchmodeAcpClient {
       );
     });
 
-    const init = await this.connection.agent.request(methods.agent.initialize, {
-      protocolVersion: PROTOCOL_VERSION,
-      clientCapabilities: {
-        // We implement both file-system methods, scoped to the session cwd.
-        fs: { readTextFile: true, writeTextFile: true },
-        // No `terminal`: we do not implement terminal/* yet, and ACP requires
-        // clients to treat omitted capabilities as UNSUPPORTED.
-      },
-      clientInfo: { name: CLIENT_NAME, title: CLIENT_TITLE, version: this.version },
-    });
+    const init = await this.withHandshakeTimeout(
+      "initialize",
+      this.connection.agent.request(methods.agent.initialize, {
+        protocolVersion: PROTOCOL_VERSION,
+        clientCapabilities: {
+          // We implement both file-system methods, scoped to the session cwd.
+          fs: { readTextFile: true, writeTextFile: true },
+          // No `terminal`: we do not implement terminal/* yet, and ACP requires
+          // clients to treat omitted capabilities as UNSUPPORTED.
+        },
+        clientInfo: { name: CLIENT_NAME, title: CLIENT_TITLE, version: this.version },
+      }),
+    );
     this.initializeResponse = init;
     log("acp", "->", `initialize -> protocol v${init.protocolVersion}`);
 
@@ -162,10 +175,13 @@ export class CouchmodeAcpClient {
       );
     }
 
-    const session = await this.connection.agent.request(methods.agent.session.new, {
-      cwd: this.cwd,
-      mcpServers: [],
-    });
+    const session = await this.withHandshakeTimeout(
+      "session/new",
+      this.connection.agent.request(methods.agent.session.new, {
+        cwd: this.cwd,
+        mcpServers: [],
+      }),
+    );
     this.sessionId = session.sessionId;
     this.modeState = session.modes ?? null;
     log("acp", "->", `session/new -> ${session.sessionId}`);
@@ -207,6 +223,32 @@ export class CouchmodeAcpClient {
       log("acp", "->", `session/set_mode ${target}`);
     } catch (error) {
       warn(`session/set_mode ${target} failed: ${errorText(error)}`);
+    }
+  }
+
+  /**
+   * Fail a handshake step rather than waiting on a silent agent forever.
+   * The agent process is killed so a hung child does not outlive the attempt.
+   */
+  private async withHandshakeTimeout<T>(step: string, work: Promise<T>): Promise<T> {
+    let timer: NodeJS.Timeout | undefined;
+    const timeout = new Promise<never>((_, reject) => {
+      timer = setTimeout(() => {
+        this.agent.kill();
+        reject(
+          new Error(
+            `agent did not respond to ${step} within ${HANDSHAKE_TIMEOUT_MS / 1000}s. ` +
+              `It may be waiting on a login or an onboarding step that cannot be completed here - ` +
+              `try running the agent's own CLI in a terminal to see what it wants.`,
+          ),
+        );
+      }, HANDSHAKE_TIMEOUT_MS);
+      timer.unref?.();
+    });
+    try {
+      return await Promise.race([work, timeout]);
+    } finally {
+      if (timer) clearTimeout(timer);
     }
   }
 

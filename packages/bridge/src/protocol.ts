@@ -64,6 +64,16 @@ export const promptDraftMessageSchema = z.object({
   text: z.string().max(32_000),
 });
 
+/**
+ * Ask the bridge to tear down the current agent and start a different one from
+ * `agents.json`. The ACP session does not survive: a session belongs to the
+ * agent that created it.
+ */
+export const switchAgentMessageSchema = z.object({
+  type: z.literal("switch_agent"),
+  name: z.string().min(1).max(64),
+});
+
 export const pingMessageSchema = z.object({
   type: z.literal("ping"),
 });
@@ -74,6 +84,7 @@ export const clientMessageSchema = z.discriminatedUnion("type", [
   permissionDecisionMessageSchema,
   cancelMessageSchema,
   promptDraftMessageSchema,
+  switchAgentMessageSchema,
   pingMessageSchema,
 ]);
 
@@ -94,6 +105,7 @@ export type ServerMessage =
   | PermissionRequestMessage
   | PermissionResolvedMessage
   | PromptDraftMessage
+  | SessionResetMessage
   | ReplayEndMessage
   | PongMessage
   | ErrorMessage;
@@ -109,6 +121,8 @@ export interface HelloMessage {
   projectName: string;
   gitBranch: string | null;
   clients: ConnectedClient[];
+  /** Every agent in agents.json, for the agent picker. */
+  agents: AgentSummary[];
   status: AgentStatus;
   /** ACP `SessionModeState` from `session/new`, after Couchmode applied its preference. */
   mode: { currentModeId: string; availableModes: SessionModeSummary[] } | null;
@@ -120,6 +134,13 @@ export interface SessionModeSummary {
   id: string;
   name: string;
   description?: string | null;
+}
+
+export interface AgentSummary {
+  name: string;
+  title: string;
+  /** The agent currently running. */
+  active: boolean;
 }
 
 export interface ConnectedClient {
@@ -167,6 +188,15 @@ export interface PromptDraftMessage {
   type: "prompt_draft";
   text: string;
   from: ClientType;
+}
+
+/**
+ * A new ACP session has begun, so anything clients are showing belongs to a
+ * session that no longer exists. Sent when the agent is switched or restarted.
+ */
+export interface SessionResetMessage {
+  type: "session_reset";
+  reason: "agent_switched" | "agent_restarted";
 }
 
 export interface ReplayEndMessage {

@@ -137,6 +137,18 @@ export class TranscriptModel {
 
   constructor(private readonly events: TranscriptEvents) {}
 
+  /**
+   * Drop everything. Used when the bridge reports a new ACP session: the items
+   * on screen belong to a session that no longer exists.
+   */
+  clear(): void {
+    this.items.length = 0;
+    this.toolIndex.clear();
+    this.openMessage = null;
+    this.availableCommands = [];
+    this.counter = 0;
+  }
+
   private nextId(prefix: string): string {
     this.counter += 1;
     return `${prefix}-${this.counter}`;

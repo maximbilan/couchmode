@@ -149,6 +149,7 @@ function showMain(): void {
         <div class="project" id="project">…</div>
         <div class="branch" id="branch"></div>
       </div>
+      <button class="pill agent-pill" id="agent-switch" hidden>Agent</button>
       <div class="pill" id="status">Starting</div>
     </header>
     <div class="banner" id="banner" hidden></div>
@@ -168,6 +169,10 @@ function showMain(): void {
 
   const send = app.querySelector<HTMLButtonElement>("#send")!;
   send.addEventListener("click", submitPrompt);
+
+  app
+    .querySelector<HTMLButtonElement>("#agent-switch")
+    ?.addEventListener("click", toggleAgentPicker);
 
   textareaEl?.addEventListener("input", () => {
     if (!textareaEl) return;
@@ -221,6 +226,12 @@ function paintHeader(): void {
     pill.textContent = STATUS_LABEL[status];
     pill.dataset.status = status;
   }
+  const agentSwitch = app.querySelector<HTMLButtonElement>("#agent-switch");
+  if (agentSwitch && hello) {
+    // Only worth offering when there is something to switch to.
+    agentSwitch.hidden = hello.agents.length < 2 || hello.fake;
+    agentSwitch.textContent = hello.agentTitle;
+  }
   if (bannerEl) {
     const offline = client.connectionState === "offline" || client.connectionState === "connecting";
     const text = offline ? "Reconnecting to the bridge…" : statusDetail;
@@ -269,6 +280,44 @@ function repaintPermissions(): void {
     }
     permissionsEl.append(node);
   }
+}
+
+// --- agent picker -----------------------------------------------------------
+
+/**
+ * Switching agents ends the ACP session, because a session belongs to the agent
+ * that created it. The sheet says so before you pick.
+ */
+function toggleAgentPicker(): void {
+  const existing = app.querySelector("#agent-sheet");
+  if (existing) {
+    existing.remove();
+    return;
+  }
+  const agents = hello?.agents ?? [];
+  if (agents.length === 0) return;
+
+  const sheet = document.createElement("div");
+  sheet.className = "permission";
+  sheet.id = "agent-sheet";
+  sheet.innerHTML = `
+    <div class="summary">Run a different agent</div>
+    <div class="detail">Switching starts a new session and clears this transcript.</div>
+    <div class="options"></div>
+  `;
+  const options = sheet.querySelector<HTMLElement>(".options")!;
+  for (const agent of agents) {
+    const button = document.createElement("button");
+    button.className = "option";
+    button.dataset.kind = agent.active ? "allow_once" : "";
+    button.textContent = agent.active ? `${agent.title} · running` : agent.title;
+    button.addEventListener("click", () => {
+      if (!agent.active) client.switchAgent(agent.name);
+      sheet.remove();
+    });
+    options.append(button);
+  }
+  permissionsEl?.prepend(sheet);
 }
 
 // --- Web Speech API (optional) ---------------------------------------------
@@ -347,6 +396,13 @@ client.on("message", (message: ServerMessage) => {
       break;
     case "acp":
       transcript.apply(message.payload.update);
+      break;
+    case "session_reset":
+      transcript.clear();
+      pending.clear();
+      app.querySelector("#agent-sheet")?.remove();
+      if (feedEl) feedEl.innerHTML = `<div class="empty">Starting a new session…</div>`;
+      repaintPermissions();
       break;
     case "permission_request":
       pending.set(message.requestId, message.request);

@@ -157,8 +157,65 @@ await press(cdp, "ArrowUp");
 f = await evaluate(cdp, FOCUS_EXPR);
 check("up returns to the feed", f?.id === "feed", f?.id ?? "none");
 
+// --- agent picker --------------------------------------------------------
+// Reachable from the top bar rather than only behind a hidden key, so the
+// remote can find it.
+// The feed is a scroller: ArrowUp pans it and only releases focus once it
+// reaches the top, so this may take several presses on a long transcript.
+await evaluate(cdp, `document.querySelector('#feed').scrollTop = 0`);
+await sleep(300);
+let agentFocus = await evaluate(cdp, `document.querySelector('.focused')?.id ?? null`);
+for (let i = 0; i < 20 && agentFocus !== "agent"; i += 1) {
+  await press(cdp, "ArrowUp");
+  await sleep(150);
+  agentFocus = await evaluate(cdp, `document.querySelector('.focused')?.id ?? null`);
+}
+check("the agent name in the top bar is focusable", agentFocus === "agent", agentFocus ?? "none");
+
+await press(cdp, "Enter");
+await sleep(400);
+const picker = await evaluate(
+  cdp,
+  `(() => {
+  const p = document.querySelector('#agent-picker');
+  if (!p) return null;
+  return {
+    options: [...p.querySelectorAll('.agent-option')].map((b) => b.textContent.trim()),
+    active: [...p.querySelectorAll('.agent-option')].filter((b) => b.dataset.active === 'true').length,
+    focused: document.querySelector('.focused')?.textContent?.trim() ?? null,
+    warns: /new session/i.test(p.querySelector('.picker-note')?.textContent ?? ''),
+  };
+})()`,
+);
+check(
+  "the picker opens and lists every configured agent",
+  (picker?.options.length ?? 0) >= 4,
+  picker?.options.join(", "),
+);
+check(
+  "the running agent is marked and focused",
+  picker?.active === 1 && /running/.test(picker?.focused ?? ""),
+  picker?.focused,
+);
+check("the picker warns that switching starts a new session", picker?.warns === true);
+
+await press(cdp, "Escape");
+await sleep(300);
+check(
+  "Back closes the picker",
+  (await evaluate(cdp, `!document.querySelector('#agent-picker')`)) === true,
+);
+
 // --- composer ------------------------------------------------------------
-await press(cdp, "ArrowDown");
+// Navigate to the prompt bar rather than assuming where the last section left
+// focus, so reordering checks cannot silently break this one.
+let onPrompt = await evaluate(cdp, `document.querySelector('.focused')?.id ?? null`);
+for (let i = 0; i < 8 && onPrompt !== "prompt"; i += 1) {
+  await press(cdp, onPrompt === "cancel" ? "ArrowLeft" : "ArrowDown");
+  await sleep(120);
+  onPrompt = await evaluate(cdp, `document.querySelector('.focused')?.id ?? null`);
+}
+check("arrow keys reach the prompt bar", onPrompt === "prompt", onPrompt ?? "none");
 await press(cdp, "Enter");
 await sleep(350);
 const composerOpen = await evaluate(cdp, `!!document.querySelector('#prompt-input')`);

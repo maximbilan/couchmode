@@ -143,6 +143,11 @@ export class CouchmodeClient {
     this.send({ type: "prompt_draft", text });
   }
 
+  /** Ask the bridge to tear down this agent and start a different one. */
+  switchAgent(name: string): void {
+    this.send({ type: "switch_agent", name });
+  }
+
   disconnect(): void {
     this.closedByUs = true;
     this.socket?.close();

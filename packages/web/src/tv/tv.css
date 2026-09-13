@@ -177,6 +177,17 @@ body {
   font-size: 26px;
   color: var(--muted);
   white-space: nowrap;
+  background: transparent;
+  border: 2px solid transparent;
+  border-radius: 999px;
+  padding: 6px 16px;
+  font-family: inherit;
+  cursor: pointer;
+}
+
+.topbar .agent.focused {
+  border-color: var(--focus);
+  color: var(--text);
 }
 
 .status-pill {
@@ -668,6 +679,28 @@ body {
 .option[data-kind="reject_always"] {
   background: color-mix(in srgb, var(--danger) 18%, var(--panel-2));
   border-color: color-mix(in srgb, var(--danger) 50%, transparent);
+}
+
+.modal .picker-note {
+  flex: none;
+  padding: 0 36px 8px;
+  font-size: 24px;
+  color: var(--muted);
+}
+
+.picker-options {
+  flex-wrap: wrap;
+}
+
+.option.agent-option {
+  flex: 1 1 40%;
+  background: var(--panel-2);
+  border-color: var(--line);
+}
+
+.option.agent-option[data-active="true"] {
+  background: color-mix(in srgb, var(--accent) 22%, var(--panel-2));
+  border-color: color-mix(in srgb, var(--accent) 55%, transparent);
 }
 
 .modal .resolved {

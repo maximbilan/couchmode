@@ -37,6 +37,7 @@ export interface HubHandlers {
   onSubmitPrompt(text: string, from: ClientType): void;
   onPermissionDecision(requestId: string, optionId: string, from: ClientType): void;
   onCancel(from: ClientType): void;
+  onSwitchAgent(name: string, from: ClientType): void;
 }
 
 export class Hub {
@@ -151,6 +152,10 @@ export class Hub {
         log("ws", "<-", `cancel from ${peer.clientType}`);
         this.handlers.onCancel(peer.clientType);
         break;
+      case "switch_agent":
+        log("ws", "<-", `switch_agent ${message.name} from ${peer.clientType}`);
+        this.handlers.onSwitchAgent(message.name, peer.clientType);
+        break;
       case "prompt_draft":
         // Relayed straight to the other clients; too chatty to log per keystroke.
         this.relay({ type: "prompt_draft", text: message.text, from: peer.clientType }, peer.id);
@@ -188,6 +193,11 @@ export class Hub {
     for (const peer of this.peers.values()) {
       if (peer.paired && peer.id !== exceptPeerId) this.sendTo(peer, message);
     }
+  }
+
+  /** Drop the replay buffer: its contents belong to a finished session. */
+  clearHistory(): void {
+    this.history.length = 0;
   }
 
   broadcast(message: ServerMessage): void {
