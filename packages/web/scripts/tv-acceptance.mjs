@@ -19,6 +19,17 @@ const PORT = process.argv[2] ?? "7801";
 const CODE = process.argv[3] ?? "123456";
 const SHOT = process.argv[4] ?? "tv.png";
 const { check, finish } = createChecks();
+
+/**
+ * The same suite runs against headless Chrome and against a real Fire TV.
+ *
+ * On a device, point COUCHMODE_CDP at the forwarded WebView devtools socket and
+ * COUCHMODE_TV_URL at the bridge's LAN address; the device is already 1920x1080
+ * so the viewport emulation is skipped.
+ */
+const CDP_ENDPOINT = process.env.COUCHMODE_CDP ?? "http://localhost:9222";
+const TV_URL = process.env.COUCHMODE_TV_URL ?? `http://localhost:${PORT}/tv`;
+const ON_DEVICE = process.env.COUCHMODE_CDP !== undefined;
 // Describe what the remote is pointed at right now.
 const FOCUS_EXPR = `(() => {
   const f = document.querySelector('.focused');
@@ -31,26 +42,28 @@ const FOCUS_EXPR = `(() => {
   };
 })()`;
 
-const targets = await (await fetch(`http://localhost:9222/json/list`)).json();
-const page = targets.find((t) => t.type === "page");
+const targets = await (await fetch(`${CDP_ENDPOINT}/json/list`)).json();
+const page = targets.find((t) => t.type === "page" || t.url.includes("/tv"));
 const cdp = await connect(page.webSocketDebuggerUrl);
 await cdp.send("Runtime.enable");
 await cdp.send("Page.enable");
 
-await cdp.send("Emulation.setDeviceMetricsOverride", {
-  width: 1920,
-  height: 1080,
-  deviceScaleFactor: 1,
-  mobile: false,
-});
+if (!ON_DEVICE) {
+  await cdp.send("Emulation.setDeviceMetricsOverride", {
+    width: 1920,
+    height: 1080,
+    deviceScaleFactor: 1,
+    mobile: false,
+  });
+}
 
 // The TV deliberately remembers its pair code, so start each run from a
 // factory-fresh device or the digit presses below land on the wrong values.
-await cdp.send("Page.navigate", { url: `http://localhost:${PORT}/tv` });
-await sleep(800);
+await cdp.send("Page.navigate", { url: TV_URL });
+await sleep(1200);
 await evaluate(cdp, "localStorage.clear()");
-await cdp.send("Page.navigate", { url: `http://localhost:${PORT}/tv?fresh=1` });
-await sleep(1400);
+await cdp.send("Page.navigate", { url: `${TV_URL}${TV_URL.includes("?") ? "&" : "?"}fresh=1` });
+await sleep(ON_DEVICE ? 2500 : 1400);
 
 // --- pairing: D-pad only -------------------------------------------------
 const digits = CODE.split("").map(Number);

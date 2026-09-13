@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  The bridge runs on the user's own machine on the local network and serves
+  plain HTTP. There is no certificate to validate for a LAN address, and
+  nothing leaves the network, so cleartext is permitted.
+-->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="true">
+        <trust-anchors>
+            <certificates src="system" />
+        </trust-anchors>
+    </base-config>
+</network-security-config>

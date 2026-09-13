@@ -1,30 +1,165 @@
 # Fire TV notes
 
-Friction log for running a web-based ACP client on Fire OS. Filled in as we hit
-things; the hackathon write-up draws from here.
-
-Status: **not started.** The TV shell lands in milestone M3. Nothing below has
-been observed on hardware yet — entries are added only after being reproduced on
-a real device.
+Friction log for running a web-based ACP client on Fire OS. Every entry below
+was reproduced on real hardware.
 
 ## Device under test
 
-|                  |                            |
-| ---------------- | -------------------------- |
-| Device           | _to fill in_               |
-| Fire OS          | _to fill in_               |
-| WebView version  | _to fill in_               |
-| `adb` connection | `adb connect <tv-ip>:5555` |
+|         |                                                         |
+| ------- | ------------------------------------------------------- |
+| Device  | Fire TV Stick (`AFTBR92D74`, `ginzaeu`)                 |
+| Fire OS | 8.1.8.2 (RS8182/3811) — Android 11, API 30              |
+| Panel   | physical 3840×2160, **override 1920×1080**, density 320 |
+| WebView | `com.amazon.webview.chromium` — **Chromium 148**        |
+| `adb`   | `adb connect <tv-ip>:5555` after enabling ADB debugging |
 
-## Quirks
+Two things this settles up front:
 
-_Nothing logged yet._
+- **API 30 is the floor**, which is why the shell sets `minSdk = 30`.
+- The WebView is modern. `color-mix()`, `-webkit-line-clamp`, `:has()` and
+  everything else the TV stylesheet uses are supported. Amazon's fork is not
+  the ancient WebView it once was.
 
-Template for entries:
+## The page rendered at double size
 
-### <short title>
+**Symptom:** everything on `/tv` was roughly twice the intended size. Only a
+couple of feed rows fit on screen.
 
-- **Symptom:** what went wrong, exactly
-- **Cause:** what it actually was
-- **Fix:** what we changed
-- **Upstream?** whether this belongs in `docs/upstream-issues.md`
+**Cause:** at density 320 the WebView reports a 960dp-wide viewport, so a page
+without an honoured viewport meta lays out at 960 CSS px. `/tv` is a fixed
+1920px canvas, so every value was effectively doubled.
+
+The original settings made it worse by being confidently wrong:
+
+```kotlin
+useWideViewPort = false      // ignores the page's width=1920
+loadWithOverviewMode = false // and never scales the canvas to fit
+```
+
+**Fix:** honour the meta viewport and let the WebView scale the canvas down to
+the screen — which on a 1080p panel lands back on 1:1 physical pixels.
+
+```kotlin
+useWideViewPort = true
+loadWithOverviewMode = true
+```
+
+`tv.html` also had to drop `initial-scale=1`, which pins the page at 1:1
+CSS-to-dp and defeats `width=1920`:
+
+```html
+<meta name="viewport" content="width=1920" />
+```
+
+**Verified:** the device now reports `innerWidth 1920`, `innerHeight 1080`, and
+a feed/diff split of 1107/737 — identical to a desktop browser.
+
+## There is no key that means "submit" while typing
+
+**Symptom:** a prompt typed on the TV could not be sent. Neither OK nor Enter
+did anything.
+
+**Cause:** while the on-screen keyboard is attached, every key is routed
+through the input method and reaches the page as `keyCode 229` /
+`key: "Unidentified"` — the standard Android "IME is composing" marker. OK and
+Enter are indistinguishable from any other key:
+
+```
+KEYCODE_DPAD_CENTER -> keydown kc=229, beforeinput insertText, input, keyup kc=229
+KEYCODE_ENTER       -> keydown kc=229, beforeinput insertText, input, keyup kc=229
+```
+
+No `submit` event is raised, so wrapping the input in a `<form>` does not help
+either — that was an attempted fix that failed on device.
+
+**What actually works:** dismissing the keyboard commits the text, and _that_
+reaches the page as a real `Enter`. So the working flow on a remote is:
+
+> OK on the prompt bar → keyboard opens → type → **Back** → prompt is submitted.
+
+Back there means "I have finished typing", not "cancel" — which is the Fire OS
+convention for text fields, even though it reads oddly written down.
+
+`/tv` keeps an explicit **Send** button as well, reachable with the D-pad once
+the keyboard is gone, so there is a visible affordance and a route that does not
+depend on IME behaviour.
+
+**Testing gotcha:** `adb shell input text` injects text _without_ raising the
+IME, so a test that uses it exercises a different path from a human typing.
+
+## BACK and MENU never reach the page
+
+Neither key produces a DOM event at all. Both are consumed before the WebView,
+which is exactly why the shell handles them natively.
+
+- **BACK** → `Activity.onBackPressed` → `evaluateJavascript("window.couchmodeBack()")`.
+  The page decides what Back means and reports whether it consumed it; the
+  activity only calls `finish()` when the page says it had nothing open.
+  `evaluateJavascript` is asynchronous, so the decision happens in its callback.
+- **MENU** → see below.
+
+## MENU long-press needed dispatchKeyEvent, not onKeyDown
+
+**Symptom:** long-pressing MENU did nothing, with no log line.
+
+**Two separate causes, found in order:**
+
+1. `Activity.onKeyDown` is a _fallback_ — it only runs if the focused view
+   declines the key. The WebView has focus and consumes MENU, so the override
+   never ran. Intercepting in `dispatchKeyEvent` is the only point that
+   reliably sees it.
+2. Detecting a long press by timing repeats does not work. Both a held remote
+   key and an injected `input keyevent --longpress` arrive as a single event
+   carrying `FLAG_LONG_PRESS`, so the repeat counter never reached its
+   threshold. Read `event.isLongPress` instead.
+
+MENU is swallowed either way: letting a short press through pops Fire OS's own
+menu over the app.
+
+## The setup form needed explicit focus traversal
+
+**Symptom:** typing the address, pressing DOWN, then typing the pair code put
+the code on the end of the address: `10.0.2.2:7777246810`.
+
+**Cause:** DPAD_DOWN inside a multi-line-capable `EditText` moves the caret
+rather than leaving the field, so focus never reached the next input.
+
+**Fix:** `android:maxLines="1"` plus explicit `nextFocusDown` / `nextFocusUp`
+on both fields and the button. On a remote, focus traversal has to be stated,
+not inferred from layout order.
+
+Two more form quirks, both fixed in the manifest and layout:
+
+- `requestFocus()` on an `EditText` raises the keyboard immediately, hiding the
+  whole form. `android:windowSoftInputMode="stateHidden|adjustResize"` stops it;
+  on a TV, focus and typing are separate things.
+- In landscape the IME defaults to fullscreen "extract mode" and covers the
+  field being edited. `android:imeOptions="...|flagNoExtractUi"` keeps the form
+  visible.
+
+## Debugging on the device
+
+The shell enables WebView debugging in debug builds only, which makes the page
+reachable from the development machine:
+
+```sh
+# the socket is named after the WebView process id
+SOCK=$(adb shell "cat /proc/net/unix | grep -o 'webview_devtools_remote_[0-9]*'" | tr -d '\r' | head -1)
+adb forward tcp:9223 "localabstract:$SOCK"
+# then chrome://inspect, or scripts/ftv-acceptance.mjs
+```
+
+`apps/tv-shell/scripts/ftv-check.sh` wraps all of that and drives the device
+with real key events.
+
+**Gotcha:** the WebView is only _detached_ when the setup form replaces it, not
+destroyed, so its devtools target survives. A test that infers "the WebView is
+gone" from the target list will be wrong — ask `dumpsys activity top` what is
+actually on screen instead.
+
+## Still unverified
+
+- The banner artwork on the Fire TV home row. The app was always launched
+  through `adb`/`monkey`, never from the launcher shelf.
+- Behaviour on an older Fire OS with a pre-Chromium-111 WebView, where
+  `color-mix()` would fail and the palette would need static fallbacks.

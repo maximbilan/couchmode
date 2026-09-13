@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Couchmode</string>
+    <string name="setup_title">Connect to your bridge</string>
+    <string name="setup_subtitle">Run <b>couchmode</b> in your project directory. It prints the address and pair code.</string>
+    <string name="setup_host_label">Address (host:port)</string>
+    <string name="setup_host_hint">192.168.1.10:7777</string>
+    <string name="setup_code_label">Pair code</string>
+    <string name="setup_code_hint">000000</string>
+    <string name="setup_connect">Connect</string>
+    <string name="setup_hint">Press and hold MENU at any time to change these.</string>
+    <string name="error_host_required">Enter the address shown in your terminal.</string>
+    <string name="error_code_required">Enter the 6-digit pair code.</string>
+    <string name="error_load_failed">Could not reach %1$s.\n\nCheck the bridge is running and that this TV is on the same network.</string>
+    <string name="retry">Retry</string>
+    <string name="change_settings">Change address</string>
+</resources>

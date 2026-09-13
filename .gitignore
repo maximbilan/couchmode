@@ -1,6 +1,7 @@
 node_modules/
 dist/
 .tv-check/
+.ftv-check/
 *.tsbuildinfo
 .env
 .env.local
