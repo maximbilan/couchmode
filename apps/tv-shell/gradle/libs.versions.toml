@@ -1,0 +1,7 @@
+[versions]
+# AGP 9 has built-in Kotlin support, so there is no separate Kotlin plugin.
+# See https://kotl.in/gradle/agp-built-in-kotlin
+agp = "9.4.0"
+
+[plugins]
+android-application = { id = "com.android.application", version.ref = "agp" }

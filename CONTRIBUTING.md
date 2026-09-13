@@ -19,6 +19,19 @@ pnpm lint
 `packages/web/.tv-check/`. It skips itself when Chrome is not installed; set
 `CHROME_BIN` to point at another Chromium build.
 
+With a Fire TV on the same network there is a hardware equivalent, which drives
+the device with real Android key events and observes the page over the WebView's
+devtools socket:
+
+```sh
+node packages/bridge/dist/cli.js --fake --code 246810 --port 7777 &
+TV_IP=192.168.1.35 apps/tv-shell/scripts/ftv-check.sh
+```
+
+It covers what browser key injection cannot: that the shell forwards the remote
+into the WebView, that hardware BACK answers a permission request instead of
+leaving the app, and that a prompt typed on the TV can be submitted at all.
+
 ## Working without an agent
 
 Almost all UI work should happen against the recorded fixture, so you are not

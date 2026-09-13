@@ -74,7 +74,34 @@ which button the remote starts on and why.
 
 ## Fire TV setup
 
-Lands in M3.
+Verified on a Fire TV Stick running **Fire OS 8.1.8.2** (Android 11, API 30).
+
+Enable ADB debugging on the device — _Settings → My Fire TV → Developer
+Options → ADB debugging_ — then:
+
+```sh
+TV_IP=192.168.1.35 scripts/install-tv.sh
+```
+
+The TV asks for the address and pair code the bridge printed, remembers them,
+and goes straight to `/tv` on every launch after that. Press and hold **MENU**
+to change them.
+
+The shell is deliberately thin: a fullscreen WebView and a settings form, with
+no dependencies at all. Everything you see on screen is the web client the
+bridge serves, so improving the TV experience means editing TypeScript, not
+reinstalling an APK.
+
+Two Fire OS behaviours worth knowing as a user:
+
+- **Back** closes whatever is open — the composer, or a permission request
+  (answering it with its deny option). It only leaves the app when nothing is
+  open.
+- While the on-screen keyboard is up, **Back is how you send a prompt**. Fire OS
+  commits the text when the keyboard closes. There is also a Send button.
+
+The full friction log, including the two bugs this shook out, is in
+[`docs/firetv-notes.md`](docs/firetv-notes.md).
 
 ## How it works
 
@@ -147,7 +174,7 @@ couchmode [options]
 
 - [x] **M1** — ACP bridge + phone client, recorded fixture, `--fake` replay
 - [x] **M2** — `/tv` 10-foot UI: focus manager, permission modal, diff panel
-- [ ] **M3** — Fire TV shell (Kotlin WebView), remote control, Back handling
+- [x] **M3** — Fire TV shell (Kotlin WebView), remote control, Back handling
 - [ ] **M4** — real projects, Codex/Gemini/Kiro verified, reconnect, voice
 - [ ] **M5** — demo assets
 

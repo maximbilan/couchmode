@@ -295,6 +295,7 @@ function renderMain(): void {
       <div class="prompt-field" id="prompt">
         <span id="prompt-content">Ask the agent… (or type on your phone)</span>
       </div>
+      <button class="cancel-button send-button" id="prompt-send" hidden>Send</button>
       <button class="cancel-button" id="cancel">Stop</button>
     </div>
     <div class="hintbar">
@@ -329,7 +330,7 @@ function renderMain(): void {
   focus.register(promptField, { priority: 2, onEnter: openComposer });
 
   const cancel = app.querySelector<HTMLElement>("#cancel")!;
-  focus.register(cancel, { priority: 3, onEnter: () => client.cancel() });
+  focus.register(cancel, { priority: 4, onEnter: () => client.cancel() });
 
   focus.focusFirstInLayer();
 
@@ -361,24 +362,71 @@ function openComposer(): void {
   if (!content) return;
   composerOpen = true;
 
-  content.innerHTML = `<input id="prompt-input" type="text" autocomplete="off"
-    placeholder="Ask the agent… (or type on your phone)" />`;
+  // The input lives in a form on purpose.
+  //
+  // On Fire TV every key pressed inside a focused field is routed through the
+  // input method and reaches the page as `keyCode 229 / "Unidentified"` - the
+  // remote's OK button and Enter are indistinguishable from any other key. A
+  // `keydown`-based submit therefore never fires on a TV. Form submission does,
+  // because the WebView raises it from the IME's action button.
+  content.innerHTML = `<form id="prompt-form" autocomplete="off">
+    <input id="prompt-input" type="text" autocomplete="off" enterkeyhint="send"
+      placeholder="Ask the agent… (or type on your phone)" />
+  </form>`;
+  const form = content.querySelector<HTMLFormElement>("#prompt-form")!;
   const input = content.querySelector<HTMLInputElement>("#prompt-input")!;
   input.focus();
+
+  const submit = () => {
+    const text = input.value.trim();
+    if (text.length > 0) client.submitPrompt(text);
+    closeComposer();
+  };
+
+  form.addEventListener("submit", (event) => {
+    event.preventDefault();
+    submit();
+  });
+
+  // An explicit Send button.
+  //
+  // While Fire TV's on-screen keyboard is attached, OK inside the field is
+  // swallowed by the IME and arrives as `keyCode 229` / `insertText`, so there
+  // is no key that means "submit" while typing. Dismissing the keyboard
+  // commits the text as Enter and submits; Send covers every other route -
+  // a desk browser, a paired USB keyboard, or a field left focused with the
+  // keyboard already gone.
+  const send = app.querySelector<HTMLButtonElement>("#prompt-send");
+  if (send) {
+    send.hidden = false;
+    focus.register(send, { priority: 3, onEnter: submit });
+  }
 
   input.addEventListener("keydown", (event) => {
     const key = toNavKey(event);
     if (event.key === "Enter") {
+      // Desktop and the acceptance test; a TV never reaches this branch.
       event.preventDefault();
-      const text = input.value.trim();
-      if (text.length > 0) client.submitPrompt(text);
-      closeComposer();
+      submit();
       return;
     }
     if (key === "back" && (event.key !== "Backspace" || input.value.length === 0)) {
       event.preventDefault();
-      closeComposer();
+      handleBack();
       return;
+    }
+    if (key === "down" || key === "right") {
+      // Let the D-pad leave the field. A single-line input has nothing to do
+      // with down, and right at the end of the text is equally spare.
+      const atEnd = input.selectionStart === input.value.length;
+      if (key === "down" || atEnd) {
+        event.preventDefault();
+        const target = app.querySelector<HTMLElement>("#prompt-send");
+        if (target && !target.hidden) {
+          focus.focus(target);
+          return;
+        }
+      }
     }
     // Everything else is typing: keep it away from the focus manager.
     event.stopPropagation();
@@ -390,6 +438,11 @@ function openComposer(): void {
 function closeComposer(): void {
   composerOpen = false;
   client.sendDraft("");
+  const send = app.querySelector<HTMLButtonElement>("#prompt-send");
+  if (send) {
+    focus.unregister(send);
+    send.hidden = true;
+  }
   paintPromptField("");
   const field = app.querySelector<HTMLElement>("#prompt");
   if (field) focus.focus(field);
@@ -523,10 +576,7 @@ function showNextPermission(): void {
   if (preferredButton instanceof HTMLElement) focus.focus(preferredButton);
 
   // Back is the deny option, not a way to dismiss an unanswered request.
-  focus.setBackHandler(() => {
-    const deny = denyOption(request);
-    if (deny) client.decidePermission(next.requestId, deny.optionId);
-  });
+  // handleBack() below routes to this while a modal is up.
 }
 
 function closePermission(requestId: string, optionId: string | null, by: string): void {
@@ -543,7 +593,6 @@ function closePermission(requestId: string, optionId: string | null, by: string)
   }
 
   window.setTimeout(() => {
-    focus.setBackHandler(null);
     focus.popLayer();
     app.querySelector("#permission-modal")?.remove();
     modalRequestId = null;
@@ -552,6 +601,44 @@ function closePermission(requestId: string, optionId: string | null, by: string)
 }
 
 // ----------------------------------------------------------------- wiring
+
+/**
+ * What Back does, in one place.
+ *
+ * Returns true when the page consumed it. The Fire TV shell calls this through
+ * `window.couchmodeBack()` and only finishes the activity when it returns
+ * false, so Back closes what is open before it ever leaves the app.
+ */
+export function handleBack(): boolean {
+  if (composerOpen) {
+    // Back cancels the composer, which is what it means everywhere else.
+    //
+    // On Fire TV this branch is rarely reached: while the on-screen keyboard is
+    // attached it consumes Back itself and commits the text, which the page
+    // receives as Enter - so Back there ends up submitting rather than
+    // cancelling. See docs/firetv-notes.md.
+    closeComposer();
+    return true;
+  }
+  const requestId = modalRequestId;
+  if (requestId !== null) {
+    // Back answers a permission request with its deny option. It is never a way
+    // to dismiss one unanswered: the agent is blocked until we reply.
+    const entry = permissionQueue.find((item) => item.requestId === requestId);
+    const deny = entry ? denyOption(entry.request) : undefined;
+    if (deny) client.decidePermission(requestId, deny.optionId);
+    return true;
+  }
+  if (screen === "main" && feedEl && focus.focused !== feedEl) {
+    // Otherwise Back returns to the top of the screen, the way Back behaves
+    // everywhere else on a TV, rather than dropping out of the app.
+    focus.focus(feedEl);
+    return true;
+  }
+  return false;
+}
+
+focus.setBackHandler(() => handleBack());
 
 document.addEventListener(
   "keydown",
@@ -564,6 +651,18 @@ document.addEventListener(
   },
   true,
 );
+
+declare global {
+  interface Window {
+    /** Called by the Fire TV shell on KEYCODE_BACK. See handleBack(). */
+    couchmodeBack?: () => boolean;
+    /** True once the main screen is up, so the shell can tell pairing apart. */
+    couchmodeReady?: () => boolean;
+  }
+}
+
+window.couchmodeBack = handleBack;
+window.couchmodeReady = () => screen === "main";
 
 client.on("state", (state: ConnectionState) => {
   if (state === "rejected") {

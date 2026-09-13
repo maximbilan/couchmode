@@ -542,6 +542,12 @@ body {
   letter-spacing: 0.08em;
 }
 
+.prompt-field form {
+  flex: 1;
+  display: flex;
+  min-width: 0;
+}
+
 .prompt-field input {
   flex: 1;
   background: transparent;
@@ -551,6 +557,12 @@ body {
   font: inherit;
   font-size: 30px;
   min-width: 0;
+}
+
+.send-button {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #06121f;
 }
 
 .cancel-button {

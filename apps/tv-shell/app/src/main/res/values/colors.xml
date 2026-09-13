@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Mirrors the palette in packages/web/src/tv/tv.css. -->
+<resources>
+    <color name="bg">#07090C</color>
+    <color name="panel">#10141A</color>
+    <color name="panel_2">#171D25</color>
+    <color name="line">#28313D</color>
+    <color name="text">#F2F6FA</color>
+    <color name="muted">#93A4B8</color>
+    <color name="accent">#5EB0FF</color>
+    <color name="focus">#FFD166</color>
+    <color name="danger">#FF6B6B</color>
+</resources>
