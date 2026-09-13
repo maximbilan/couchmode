@@ -608,6 +608,31 @@ function closePermission(requestId: string, optionId: string | null, by: string)
   }, 900);
 }
 
+/**
+ * Wipe everything belonging to the previous ACP session.
+ *
+ * Tearing down the overlays matters as much as clearing the transcript: a
+ * permission modal left on screen holds a focus layer and its `requestId`, so
+ * the remote would be stuck behind a dialog describing a session that has
+ * ended, and no later request could ever be shown.
+ */
+function resetForNewSession(): void {
+  app.querySelector("#permission-modal")?.remove();
+  app.querySelector("#agent-picker")?.remove();
+  pickerOpen = false;
+  modalRequestId = null;
+  permissionQueue.length = 0;
+  focus.setBackHandler(() => handleBack());
+  focus.resetToBase();
+
+  transcript.clear();
+  if (feedEl) feedEl.innerHTML = `<div class="empty">Starting a new session…</div>`;
+  autoScroll = true;
+  statusDetail = "";
+  paintDiff();
+  paintTopbar();
+}
+
 // --------------------------------------------------------- agent picker
 
 let pickerOpen = false;
@@ -643,13 +668,15 @@ function openAgentPicker(): void {
     const button = document.createElement("button");
     button.className = "option agent-option";
     button.dataset.active = String(agent.active);
-    button.textContent = agent.active ? `${agent.title} · running` : agent.title;
+    button.textContent = agent.active ? `${agent.title} · restart` : agent.title;
     optionsEl.append(button);
     focus.register(button, {
       layer: "picker",
       priority: index,
       onEnter: () => {
-        if (!agent.active) client.switchAgent(agent.name);
+        // Choosing the running agent restarts it, which is worth having when
+        // one has wedged.
+        client.switchAgent(agent.name);
         closeAgentPicker();
       },
     });
@@ -762,12 +789,7 @@ client.on("message", (message: ServerMessage) => {
       transcript.apply(message.payload.update);
       break;
     case "session_reset":
-      // The transcript and diff belong to a session that no longer exists.
-      transcript.clear();
-      permissionQueue.length = 0;
-      if (feedEl) feedEl.innerHTML = `<div class="empty">Starting a new session…</div>`;
-      autoScroll = true;
-      paintDiff();
+      resetForNewSession();
       break;
     case "permission_request":
       permissionQueue.push({ requestId: message.requestId, request: message.request });

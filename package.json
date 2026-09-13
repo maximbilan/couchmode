@@ -16,7 +16,7 @@
     "lint": "eslint . && prettier --check .",
     "format": "prettier --write .",
     "dev:fake": "pnpm --filter @couchmode/bridge run dev -- --fake",
-    "check": "pnpm typecheck && pnpm --filter @couchmode/bridge run check:hub && pnpm --filter @couchmode/web run check:render",
+    "check": "pnpm typecheck && pnpm --filter @couchmode/bridge run check:client && pnpm --filter @couchmode/bridge run check:hub && pnpm --filter @couchmode/web run check:render",
     "check:tv": "pnpm build && pnpm --filter @couchmode/web run check:tv"
   },
   "devDependencies": {

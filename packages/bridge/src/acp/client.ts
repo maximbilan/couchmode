@@ -70,6 +70,15 @@ export class CouchmodeAcpClient {
   private initializeResponse: InitializeResponse | null = null;
   private modeState: SessionModeState | null = null;
   private status: AgentStatus = "starting";
+  /**
+   * Set by stop(). A stopped client must go silent.
+   *
+   * Killing an agent makes its `exited` promise resolve a moment later, and
+   * without this the old client broadcasts `agent_status: exited` - carrying
+   * the dead agent's stderr - after the replacement has already reported
+   * ready. Switching agents then looked like the new agent had crashed.
+   */
+  private disposed = false;
 
   private readonly fs: ScopedFs;
   readonly permissions: PermissionRegistry;
@@ -88,6 +97,7 @@ export class CouchmodeAcpClient {
   ) {
     this.fs = new ScopedFs(cwd);
     this.permissions = new PermissionRegistry((requestId, optionId, by) => {
+      if (this.disposed) return;
       this.events.onPermissionResolved(requestId, optionId, by);
       if (this.permissions.size === 0 && this.busy) this.setStatus("prompting");
     });
@@ -106,6 +116,7 @@ export class CouchmodeAcpClient {
   }
 
   private setStatus(status: AgentStatus, detail?: string): void {
+    if (this.disposed) return;
     if (this.status === status && !detail) return;
     this.status = status;
     this.events.onStatus(status, detail);
@@ -117,6 +128,7 @@ export class CouchmodeAcpClient {
       // Agent -> client notification carrying all streamed output. Forwarded
       // to TV and phone unchanged.
       .onNotification(methods.client.session.update, (ctx) => {
+        if (this.disposed) return;
         const update = ctx.params.update as { sessionUpdate?: string };
         log("acp", "<-", `session/update ${update.sessionUpdate ?? "?"}`);
         this.events.onSessionUpdate(ctx.params);
@@ -130,7 +142,7 @@ export class CouchmodeAcpClient {
           `session/request_permission ${ctx.params.toolCall?.title ?? ctx.params.toolCall?.toolCallId ?? ""}`,
         );
         this.setStatus("waiting_permission");
-        this.events.onPermissionRequest(requestId, ctx.params);
+        if (!this.disposed) this.events.onPermissionRequest(requestId, ctx.params);
         return response;
       })
       .onRequest(methods.client.fs.readTextFile, async (ctx) => {
@@ -322,7 +334,15 @@ export class CouchmodeAcpClient {
     return this.permissions.decide(requestId, optionId, by);
   }
 
+  /**
+   * Stop this client for good.
+   *
+   * Silenced first, then torn down: cancelling permissions and killing the
+   * agent both produce events, and none of them belong to whatever runs next.
+   */
   async stop(): Promise<void> {
+    this.disposed = true;
+    this.queue.length = 0;
     this.permissions.cancelAll();
     this.connection?.close();
     this.agent.kill();

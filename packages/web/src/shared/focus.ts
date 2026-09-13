@@ -136,6 +136,21 @@ export class FocusManager {
     this.focusFirstInLayer();
   }
 
+  /**
+   * Drop every layer above the base and forget their targets.
+   *
+   * Used when the world changes underneath an overlay - a new session, say -
+   * so a modal cannot be left holding focus over a screen it no longer
+   * describes.
+   */
+  resetToBase(): void {
+    while (this.layers.length > 1) {
+      const layer = this.layers.pop()!;
+      this.clearLayer(layer);
+    }
+    this.focusFirstInLayer();
+  }
+
   popLayer(): void {
     if (this.layers.length <= 1) return;
     const layer = this.layers.pop()!;

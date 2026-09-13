@@ -365,19 +365,29 @@ async function main(): Promise<void> {
       hub.broadcast({ type: "error", message: `unknown agent "${targetName}"` });
       return;
     }
-    if (isFake) {
+    // Choosing the agent already running means "restart it" - useful when an
+    // agent has wedged, and the only meaningful form of this in fake mode,
+    // where there is one recording and nothing to switch to.
+    const restarting = target.name === current.name;
+    if (isFake && !restarting) {
       hub.broadcast({
         type: "error",
         message: "fake mode replays one recording; restart the bridge to change agents",
       });
       return;
     }
-    if (target.name === current.name) return;
 
-    info(`switching agent: ${current.name} -> ${target.name}`);
+    info(
+      restarting
+        ? `restarting agent: ${target.name}`
+        : `switching agent: ${current.name} -> ${target.name}`,
+    );
     // Everything on screen belongs to a session that is about to end.
     hub.clearHistory();
-    hub.broadcast({ type: "session_reset", reason: "agent_switched" });
+    hub.broadcast({
+      type: "session_reset",
+      reason: restarting ? "agent_restarted" : "agent_switched",
+    });
     hub.broadcast({ type: "agent_status", status: "starting" });
     await startAgent(target);
   }

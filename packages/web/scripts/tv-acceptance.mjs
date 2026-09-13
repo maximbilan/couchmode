@@ -194,7 +194,7 @@ check(
 );
 check(
   "the running agent is marked and focused",
-  picker?.active === 1 && /running/.test(picker?.focused ?? ""),
+  picker?.active === 1 && /restart/.test(picker?.focused ?? ""),
   picker?.focused,
 );
 check("the picker warns that switching starts a new session", picker?.warns === true);
@@ -395,6 +395,78 @@ check(
 );
 
 // --- screenshot ----------------------------------------------------------
+// --- a session reset must not leave an overlay holding focus --------------
+// The reported bug: switch agents while a permission modal is up and the modal
+// stays on screen holding a focus layer and its requestId, so the remote is
+// stuck behind a dialog describing a session that has ended.
+await sleep(500);
+const beforeReset = await evaluate(
+  cdp,
+  `JSON.stringify({
+  items: document.querySelectorAll('#feed .msg, #feed .tool').length,
+})`,
+).then(JSON.parse);
+check("the feed has content before the reset", beforeReset.items > 0, `${beforeReset.items} items`);
+
+// Force a modal to be open at the moment the session ends.
+await evaluate(
+  cdp,
+  `(() => {
+  const scrim = document.createElement('div');
+  scrim.className = 'scrim';
+  scrim.id = 'permission-modal';
+  scrim.innerHTML = '<div class="modal"><div class="summary">stale</div></div>';
+  document.querySelector('#app').append(scrim);
+})()`,
+);
+
+// Selecting the running agent restarts it, which is a real session reset.
+// Reach the picker with the remote and choose the running agent.
+await evaluate(cdp, `document.querySelector('#feed').scrollTop = 0`);
+let pickFocus = await evaluate(cdp, `document.querySelector('.focused')?.id ?? null`);
+for (let i = 0; i < 20 && pickFocus !== "agent"; i += 1) {
+  await press(cdp, "ArrowUp");
+  await sleep(120);
+  pickFocus = await evaluate(cdp, `document.querySelector('.focused')?.id ?? null`);
+}
+await press(cdp, "Enter");
+await sleep(400);
+await press(cdp, "Enter");
+
+// Wait for the bridge to tear the session down and come back.
+let reset = null;
+for (let i = 0; i < 40; i += 1) {
+  await sleep(500);
+  reset = await evaluate(
+    cdp,
+    `JSON.stringify({
+    modal: !!document.querySelector('#permission-modal'),
+    picker: !!document.querySelector('#agent-picker'),
+    items: document.querySelectorAll('#feed .msg, #feed .tool').length,
+    focused: document.querySelector('.focused')?.id ?? null,
+    status: document.querySelector('#status')?.textContent,
+  })`,
+  ).then(JSON.parse);
+  if (!reset.modal && reset.items === 0) break;
+}
+check("a session reset removes a stale permission modal", reset?.modal === false);
+check("a session reset closes the agent picker", reset?.picker === false);
+check("a session reset clears the transcript", reset?.items === 0, `${reset?.items} items left`);
+check(
+  "focus returns to a real control after the reset",
+  !!reset?.focused,
+  reset?.focused ?? "nothing focused",
+);
+
+// And the UI must still work afterwards.
+await press(cdp, "ArrowDown");
+const afterReset = await evaluate(cdp, `document.querySelector('.focused')?.id ?? null`);
+check(
+  "the remote still moves focus after a reset",
+  !!afterReset && afterReset !== reset?.focused,
+  afterReset ?? "none",
+);
+
 await screenshot(cdp, SHOT);
 console.log(`\nscreenshot -> ${SHOT}`);
 

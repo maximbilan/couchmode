@@ -70,7 +70,8 @@ spatially — there is no tab order, because a remote has no Tab key.
 Focus the agent's name in the top bar (or press **MENU**) to switch agents
 without restarting the bridge. Switching ends the ACP session — a session
 belongs to the agent that created it — so the transcript is cleared and the
-picker says so before you choose.
+picker says so before you choose. Choosing the agent that is already running
+restarts it, which is what you want when one has wedged.
 
 When the agent asks permission, a modal takes focus and shows the agent's own
 options in the order it gave them. See
