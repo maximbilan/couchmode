@@ -1,0 +1,35 @@
+{
+  "name": "@couchmode/bridge",
+  "version": "0.1.0",
+  "description": "Couchmode bridge: runs on your machine, is the ACP client, relays to TV and phone over the LAN.",
+  "license": "MIT",
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "bin": {
+    "couchmode": "dist/cli.js"
+  },
+  "files": [
+    "dist",
+    "src/config/agents.json",
+    "fixtures"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json && node scripts/copy-assets.js",
+    "dev": "node scripts/dev.js",
+    "start": "node dist/cli.js",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "verify:fixture": "node scripts/verify-fixture.mjs"
+  },
+  "dependencies": {
+    "@agentclientprotocol/sdk": "1.4.0",
+    "ws": "^8.18.0",
+    "zod": "^3.24.1"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.7",
+    "@types/ws": "^8.5.14",
+    "typescript": "^5.7.3"
+  }
+}

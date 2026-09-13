@@ -1,0 +1,54 @@
+{
+  "$comment": [
+    "Bundled agent launch definitions. Agent launch is DATA, not code.",
+    "Override or extend these by creating ~/.couchmode/agents.json with the same shape;",
+    "entries there are merged over these defaults, keyed by agent name.",
+    "",
+    "Couchmode never handles credentials. Each agent CLI uses the login it already has.",
+    "'loginHint' is the command Couchmode prints in the terminal when an agent reports",
+    "that it is not authenticated. It is never sent to the TV or phone clients.",
+    "",
+    "'preferredModes' is a priority list of ACP session mode ids. Approving tool calls",
+    "from the couch is the whole point of Couchmode, so on startup it switches the",
+    "session to the first of these the agent actually offers - agents that default to",
+    "deciding permissions themselves would otherwise never ask. Override with --mode."
+  ],
+  "agents": {
+    "claude": {
+      "title": "Claude Code",
+      "command": "npx",
+      "args": ["-y", "@agentclientprotocol/claude-agent-acp"],
+      "env": {},
+      "preferredModes": ["default", "ask"],
+      "loginHint": "claude  (then run /login)",
+      "docs": "https://github.com/zed-industries/claude-agent-acp"
+    },
+    "codex": {
+      "title": "Codex CLI",
+      "command": "npx",
+      "args": ["-y", "@agentclientprotocol/codex-acp"],
+      "env": {},
+      "preferredModes": ["default", "ask", "manual"],
+      "loginHint": "codex login",
+      "docs": "https://github.com/agentclientprotocol/codex-acp"
+    },
+    "gemini": {
+      "title": "Gemini CLI",
+      "command": "gemini",
+      "args": ["--experimental-acp"],
+      "env": {},
+      "preferredModes": ["default", "ask"],
+      "loginHint": "gemini  (completes OAuth on first run)",
+      "docs": "https://github.com/google-gemini/gemini-cli"
+    },
+    "kiro": {
+      "title": "Kiro CLI",
+      "command": "kiro-cli",
+      "args": ["acp"],
+      "env": {},
+      "preferredModes": ["default", "ask"],
+      "loginHint": "kiro-cli login",
+      "docs": "https://kiro.dev/docs/cli/acp/"
+    }
+  }
+}
