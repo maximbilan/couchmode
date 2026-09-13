@@ -215,6 +215,13 @@ Panels are scrollers: up/down pan their content and only release the key back to
 the focus manager once the edge is reached, so focus leaves a panel exactly when
 there is nothing left to scroll.
 
+Left and right stay within a row. Without that rule, pressing right from the
+activity feed with no diff panel beside it jumped up to the agent name in the
+top bar — the only focusable thing further right on the screen. Horizontal moves
+now require the candidate to overlap the current element's vertical range;
+vertical moves may leave the column, since that is the only way to reach a
+control that is not directly above or below.
+
 A permission request pushes a focus _layer_. Only the top layer is navigable, so
 the feed underneath cannot be reached by accident while the agent is blocked
 waiting for an answer.
@@ -244,6 +251,12 @@ room, "Thinking" and "running your test suite" should not look the same.
 Shows the most recent `type: "diff"` tool-call content, with the path and
 `+N −M` in the header. It is capped at 400 rendered lines; a whole-file diff can
 be thousands, and nobody reads that from a sofa.
+
+It is not on screen until there is a diff to put in it. Forty per cent of a
+television saying "no file changes yet" is forty per cent wasted, so the panel
+appears when the first diff arrives and the activity feed takes the full width
+until then. Focus follows: the panel cannot be reached while it is absent, and
+focus leaves it if it disappears underneath.
 
 ## Switching agents ends the session
 
@@ -289,6 +302,14 @@ So `initialize` and `session/new` are bounded (30s). On timeout the agent
 process is killed and the failure is surfaced as an `agent_status` error, with
 the agent's own stderr when it produced any, and its login command printed in
 the terminal.
+
+## Dictation is the keyboard's job
+
+There is no in-page microphone. Browsers expose speech recognition only in a
+secure context, and the bridge serves plain HTTP over the LAN by design, so on
+a phone `SpeechRecognition` exists while `navigator.mediaDevices` does not — a
+button that can be pressed and can never work. Phone keyboards have their own
+microphone key, which belongs to the operating system and works on any origin.
 
 ## One non-ACP message: `prompt_draft`
 
