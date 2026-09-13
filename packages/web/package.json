@@ -1,0 +1,18 @@
+{
+  "name": "@couchmode/web",
+  "version": "0.1.0",
+  "description": "Couchmode web clients: /tv (10-foot D-pad UI) and /phone (keyboard + approvals).",
+  "license": "MIT",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "vite build",
+    "dev": "vite",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "check:render": "node scripts/check-render.mjs ../bridge/fixtures/claude-readme-tests.jsonl"
+  },
+  "devDependencies": {
+    "typescript": "^5.7.3",
+    "vite": "^6.0.7"
+  }
+}

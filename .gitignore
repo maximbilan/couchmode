@@ -1,0 +1,17 @@
+node_modules/
+dist/
+*.tsbuildinfo
+.env
+.env.local
+.DS_Store
+
+# Gradle / Android (apps/tv-shell)
+.gradle/
+build/
+local.properties
+*.apk
+*.keystore
+
+# Editor
+.idea/
+.vscode/
