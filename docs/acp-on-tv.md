@@ -258,8 +258,24 @@ replay buffer and sends `session_reset`; clients drop their transcript and
 diff. The picker says this will happen before you choose it, because a TV that
 silently empties itself is alarming.
 
-`--fake` refuses to switch: a recording is one agent's session, and pretending
-otherwise would be a lie about what is on screen.
+Choosing the agent already running restarts it — the same teardown, a fresh
+session. `--fake` allows exactly that and refuses anything else: a recording is
+one agent's session, and pretending otherwise would be a lie about what is on
+screen.
+
+Two details this got wrong at first, both found by using it rather than testing
+it:
+
+- **A stopped client has to go silent.** Killing an agent makes its `exited`
+  promise resolve a moment later, and the stopped client was still wired to the
+  hub — so it broadcast `agent_status: exited`, carrying the dead agent's
+  stderr, _after_ its replacement had already reported ready. Switching agents
+  looked like the new agent had crashed. A stopped client now emits nothing.
+- **The reset has to tear down overlays, not just the transcript.** A
+  permission modal left on screen holds a focus layer and its `requestId`, so
+  the remote sat behind a dialog describing a session that had ended and no
+  later request could ever be shown. `session_reset` now removes the modal and
+  the picker, clears the pending queue, and returns focus to the base layer.
 
 ## Handshake timeouts
 

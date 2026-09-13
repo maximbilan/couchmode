@@ -9,6 +9,7 @@
  *
  * Run via scripts/tv-check.sh, which starts a fresh bridge and browser.
  */
+import { networkInterfaces } from "node:os";
 import { connect, createChecks, evaluate, screenshot, sleep } from "./cdp.mjs";
 
 setTimeout(() => {
@@ -79,7 +80,7 @@ check(
   !!main.project && !!main.status,
   `${main.project} · ${main.status}`,
 );
-check("the mic button appears when speech recognition exists", main.mic === true);
+check("the mic button appears in a secure context", main.mic === true);
 check("no horizontal scroll at 390px wide", main.noHScroll === true);
 
 // Dictation writes into the composer without sending anything.
@@ -155,6 +156,44 @@ check(
   feed.messages > 0 && feed.tools > 0,
   `${feed.messages} messages, ${feed.tools} tool rows`,
 );
+
+// --- the origin a phone actually uses -------------------------------------
+// Everything above ran on localhost, which is a secure context. A real phone
+// loads a LAN IP over plain HTTP, where the browser strips microphone access
+// even though the Speech API object still exists. Offering a button that can
+// never work there is worse than offering none.
+const lan = Object.values(networkInterfaces())
+  .flat()
+  .find((entry) => entry && entry.family === "IPv4" && !entry.internal)?.address;
+
+if (!lan) {
+  console.log("… no LAN address; skipping the insecure-origin checks");
+} else {
+  await cdp.send("Page.navigate", { url: `http://${lan}:${PORT}/phone?code=${CODE}` });
+  await sleep(2200);
+  const insecure = await evaluate(
+    cdp,
+    `JSON.stringify({
+    secure: window.isSecureContext,
+    speechApi: typeof (window.SpeechRecognition || window.webkitSpeechRecognition),
+    micHidden: document.querySelector('#mic')?.hidden ?? null,
+    placeholder: document.querySelector('#input')?.placeholder ?? null,
+  })`,
+  ).then(JSON.parse);
+
+  check("a LAN origin is not a secure context", insecure.secure === false, `http://${lan}:${PORT}`);
+  check(
+    "the Speech API still exists there, which is the trap",
+    insecure.speechApi === "function",
+    insecure.speechApi,
+  );
+  check("the mic button is hidden when dictation cannot work", insecure.micHidden === true);
+  check(
+    "the composer points at the keyboard's own dictation instead",
+    /keyboard/i.test(insecure.placeholder ?? ""),
+    insecure.placeholder,
+  );
+}
 
 const passed = finish();
 cdp.close();
