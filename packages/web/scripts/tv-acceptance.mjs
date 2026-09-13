@@ -102,6 +102,7 @@ const layout = await evaluate(
     status: g('#status')?.textContent,
     clients: g('#clients')?.textContent,
     feedW: r(feed)?.width, diffW: r(diff)?.width,
+    diffPanelHidden: g('#diff-panel')?.hidden ?? null,
     vw: innerWidth, vh: innerHeight,
     bodyFont: parseFloat(getComputedStyle(document.body).fontSize),
     promptH: r(g('#prompt'))?.height,
@@ -122,10 +123,13 @@ check(
   `${layout.project} | ${layout.branch} | ${layout.agent} | ${layout.status}`,
 );
 check("clients indicator present", /📺|📱/.test(layout.clients ?? ""), layout.clients);
+// Before any file changes there is nothing to put in the Changes panel, so it
+// is not on screen at all and the feed has the width to itself.
+check("the Changes panel is hidden until there is a diff", layout.diffPanelHidden === true);
 check(
-  "feed is ~60% and diff ~40%",
-  Math.abs(layout.feedW / (layout.feedW + layout.diffW) - 0.6) < 0.04,
-  `${Math.round(layout.feedW)} / ${Math.round(layout.diffW)}`,
+  "the feed spans the full width while Changes is hidden",
+  layout.feedW > layout.vw * 0.9,
+  `${Math.round(layout.feedW)}px of ${layout.vw}px`,
 );
 check("body text >= 28px", layout.bodyFont >= 28, `${layout.bodyFont}px`);
 check("prompt bar >= 64px tall", layout.promptH >= 64, `${Math.round(layout.promptH)}px`);
@@ -138,11 +142,7 @@ check("focus starts on the activity feed", f?.id === "feed", f?.id ?? "none");
 
 await press(cdp, "ArrowRight");
 f = await evaluate(cdp, FOCUS_EXPR);
-check("right moves to the diff panel", f?.id === "diff", f?.id ?? "none");
-
-await press(cdp, "ArrowLeft");
-f = await evaluate(cdp, FOCUS_EXPR);
-check("left returns to the feed", f?.id === "feed", f?.id ?? "none");
+check("right does not reach a hidden Changes panel", f?.id === "feed", f?.id ?? "none");
 
 await press(cdp, "ArrowDown");
 f = await evaluate(cdp, FOCUS_EXPR);
@@ -283,6 +283,19 @@ if (modal) {
   );
   check("modal steals focus (feed unreachable)", stillInModal === true);
 
+  // That ArrowUp left focus on the scrollable detail box. Horizontal moves stay
+  // within a row, so Down is the way back to the buttons.
+  await press(cdp, "ArrowDown");
+  const backOnOptions = await evaluate(
+    cdp,
+    `document.querySelector('.focused')?.dataset?.kind ?? null`,
+  );
+  check(
+    "down returns from the detail box to the options",
+    !!backOnOptions,
+    backOnOptions ?? "none",
+  );
+
   // Walk right across the option row to the reject button.
   await press(cdp, "ArrowRight");
   await press(cdp, "ArrowRight");
@@ -348,12 +361,28 @@ if (modal2) {
 }
 
 // --- diff panel ----------------------------------------------------------
+// The panel only exists once a file has changed, so focus should be able to
+// reach it now when it could not at the start of the run.
+await evaluate(cdp, `document.querySelector('#feed').scrollTop = 0`);
+let atFeed = await evaluate(cdp, `document.querySelector('.focused')?.id ?? null`);
+for (let i = 0; i < 8 && atFeed !== "feed"; i += 1) {
+  await press(cdp, atFeed === "cancel" ? "ArrowLeft" : "ArrowUp");
+  await sleep(120);
+  atFeed = await evaluate(cdp, `document.querySelector('.focused')?.id ?? null`);
+}
+await press(cdp, "ArrowRight");
+const reachable = await evaluate(cdp, `document.querySelector('.focused')?.id ?? null`);
+
 const diff = await evaluate(
   cdp,
   `(() => {
   const head = document.querySelector('#diff-head');
   const body = document.querySelector('#diff');
+  const feed = document.querySelector('#feed');
   return {
+    panelVisible: document.querySelector('#diff-panel')?.hidden === false,
+    feedW: feed.getBoundingClientRect().width,
+    diffW: body.getBoundingClientRect().width,
     path: head?.querySelector('.path')?.textContent,
     plus: head?.querySelector('.plus')?.textContent,
     minus: head?.querySelector('.minus')?.textContent,
@@ -363,6 +392,14 @@ const diff = await evaluate(
   };
 })()`,
 );
+diff.reachable = reachable;
+check("the Changes panel appears once a file changes", diff.panelVisible === true);
+check(
+  "it takes ~40% once shown",
+  Math.abs(diff.diffW / (diff.feedW + diff.diffW) - 0.4) < 0.05,
+  `${Math.round(diff.feedW)} / ${Math.round(diff.diffW)}`,
+);
+check("right now reaches the diff panel", diff.reachable === "diff", diff.reachable ?? "none");
 check("diff panel shows a path", !!diff.path, diff.path);
 check("diff header shows +N −M", !!diff.plus && !!diff.minus, `${diff.plus} ${diff.minus}`);
 check(

@@ -157,7 +157,6 @@ function showMain(): void {
     <div class="permissions" id="permissions"></div>
     <footer>
       <textarea id="input" rows="1" placeholder="Ask the agent…"></textarea>
-      <button class="icon-button" id="mic" title="Dictate" hidden>🎤</button>
       <button class="send" id="send">Send</button>
     </footer>
   `;
@@ -186,7 +185,6 @@ function showMain(): void {
     }
   });
 
-  setupVoice();
   paintHeader();
   repaintPermissions();
 
@@ -318,103 +316,6 @@ function toggleAgentPicker(): void {
     options.append(button);
   }
   permissionsEl?.prepend(sheet);
-}
-
-// --- Web Speech API (optional) ---------------------------------------------
-
-interface SpeechRecognitionLike extends EventTarget {
-  lang: string;
-  interimResults: boolean;
-  continuous: boolean;
-  start(): void;
-  stop(): void;
-  onresult: ((event: { results: ArrayLike<ArrayLike<{ transcript: string }>> }) => void) | null;
-  onend: (() => void) | null;
-  onerror: ((event: { error?: string }) => void) | null;
-}
-
-/**
- * Whether in-page dictation can actually work here.
- *
- * The Speech API object exists on an insecure origin but is useless: browsers
- * strip microphone access outside a secure context, and `navigator.mediaDevices`
- * is undefined. Couchmode is served over plain HTTP on the LAN by design, so on
- * a phone this is normally false - and showing a button that can never work is
- * worse than showing none.
- *
- * It is true when the page is opened over localhost or HTTPS.
- */
-export function speechAvailable(): boolean {
-  const w = window as unknown as {
-    SpeechRecognition?: unknown;
-    webkitSpeechRecognition?: unknown;
-  };
-  const hasApi = Boolean(w.SpeechRecognition ?? w.webkitSpeechRecognition);
-  return hasApi && window.isSecureContext;
-}
-
-function setupVoice(): void {
-  const mic = app.querySelector<HTMLButtonElement>("#mic");
-  if (!mic) return;
-
-  if (!speechAvailable()) {
-    // Every phone keyboard has its own dictation key, and that one works on any
-    // origin because it belongs to the OS rather than the page.
-    mic.hidden = true;
-    if (textareaEl) {
-      textareaEl.placeholder = "Ask the agent… (tap 🎤 on your keyboard to dictate)";
-    }
-    return;
-  }
-
-  const w = window as unknown as {
-    SpeechRecognition?: new () => SpeechRecognitionLike;
-    webkitSpeechRecognition?: new () => SpeechRecognitionLike;
-  };
-  const Recognition = (w.SpeechRecognition ?? w.webkitSpeechRecognition)!;
-
-  mic.hidden = false;
-  let recognition: SpeechRecognitionLike | null = null;
-
-  const finish = () => {
-    recognition = null;
-    mic.classList.remove("recording");
-  };
-
-  mic.addEventListener("click", () => {
-    if (recognition) {
-      recognition.stop();
-      return;
-    }
-    const instance = new Recognition();
-    recognition = instance;
-    instance.lang = navigator.language || "en-US";
-    instance.interimResults = true;
-    instance.continuous = false;
-    instance.onresult = (event) => {
-      let text = "";
-      for (let i = 0; i < event.results.length; i += 1) {
-        text += event.results[i]?.[0]?.transcript ?? "";
-      }
-      if (textareaEl) textareaEl.value = text;
-    };
-    instance.onend = finish;
-    // Without this a refused microphone fails silently and the button just
-    // sits there looking broken.
-    instance.onerror = (event) => {
-      finish();
-      statusDetail = `Dictation stopped: ${event.error ?? "unknown error"}. You can tap 🎤 on your keyboard instead.`;
-      paintHeader();
-    };
-    mic.classList.add("recording");
-    try {
-      instance.start();
-    } catch (error) {
-      finish();
-      statusDetail = `Dictation could not start: ${(error as Error).message}`;
-      paintHeader();
-    }
-  });
 }
 
 // --- wiring -----------------------------------------------------------------

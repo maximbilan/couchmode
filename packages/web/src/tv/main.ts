@@ -194,12 +194,26 @@ function afterFeedChange(): void {
 
 function paintDiff(): void {
   if (!diffBodyEl || !diffHeadEl) return;
+  const panel = app.querySelector<HTMLElement>("#diff-panel");
+  const stage = app.querySelector<HTMLElement>("#stage");
   const diff = latestDiff(transcript.items);
+
+  // An empty Changes panel is 40% of a television spent saying "nothing yet",
+  // so it only exists once there is a diff to put in it. The feed takes the
+  // whole width until then.
   if (!diff) {
-    diffHeadEl.innerHTML = `<span>Changes</span>`;
-    diffBodyEl.innerHTML = `<div class="empty">No file changes yet.</div>`;
+    if (panel && !panel.hidden) {
+      panel.hidden = true;
+      // Focus cannot stay on a panel that is no longer on screen.
+      if (diffBodyEl && focus.focused === diffBodyEl && feedEl) focus.focus(feedEl);
+    }
+    stage?.classList.add("stage-solo");
+    diffBodyEl.innerHTML = "";
     return;
   }
+
+  if (panel) panel.hidden = false;
+  stage?.classList.remove("stage-solo");
 
   const view = buildDiff(diff);
   diffHeadEl.innerHTML = `
@@ -282,14 +296,14 @@ function renderMain(): void {
       <span class="clients" id="clients"></span>
     </div>
     <div class="banner" id="banner" hidden></div>
-    <div class="stage">
+    <div class="stage" id="stage">
       <section class="panel">
         <div class="panel-head"><span>Activity</span></div>
         <div class="scroller feed" id="feed"><div class="empty">Ask the agent something to get started.</div></div>
       </section>
-      <section class="panel">
+      <section class="panel" id="diff-panel" hidden>
         <div class="panel-head" id="diff-head"><span>Changes</span></div>
-        <div class="scroller" id="diff"><div class="empty">No file changes yet.</div></div>
+        <div class="scroller" id="diff"></div>
       </section>
     </div>
     <div class="promptbar">

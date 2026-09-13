@@ -33,6 +33,12 @@
   box-sizing: border-box;
 }
 
+/* `hidden` must actually hide: the attribute loses to any class that sets
+   `display`. The Send button relies on this. */
+[hidden] {
+  display: none !important;
+}
+
 html,
 body {
   margin: 0;
@@ -238,6 +244,11 @@ body {
   gap: var(--gap);
   padding: var(--gap);
   min-height: 0;
+}
+
+/* No diff yet: the activity feed has the screen to itself. */
+.stage.stage-solo {
+  grid-template-columns: 1fr;
 }
 
 .panel {

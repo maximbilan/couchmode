@@ -67,6 +67,10 @@ spatially — there is no tab order, because a remote has no Tab key.
 | OK      | activate; on the prompt bar it opens a text field; on Activity it expands the agent's thinking |
 | Back    | close the composer, or answer a permission request with its deny option                        |
 
+The **Changes** panel only appears once the agent has actually changed a file.
+Until then the activity feed has the screen to itself, rather than half of it
+being spent on an empty box.
+
 Focus the agent's name in the top bar (or press **MENU**) to switch agents
 without restarting the bridge. Switching ends the ACP session — a session
 belongs to the agent that created it — so the transcript is cleared and the

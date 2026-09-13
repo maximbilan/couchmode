@@ -213,12 +213,17 @@ export class FocusManager {
       this.focusFirstInLayer();
       return true;
     }
-    const from = centre(this.current.getBoundingClientRect());
+    const fromRect = this.current.getBoundingClientRect();
+    const from = centre(fromRect);
+    const horizontal = direction === "left" || direction === "right";
 
-    let best: { el: HTMLElement; score: number } | null = null;
+    const aligned: Array<{ el: HTMLElement; score: number }> = [];
+    const offRow: Array<{ el: HTMLElement; score: number }> = [];
+
     for (const target of this.inActiveLayer()) {
       if (target.el === this.current) continue;
-      const to = centre(target.el.getBoundingClientRect());
+      const toRect = target.el.getBoundingClientRect();
+      const to = centre(toRect);
       const dx = to.x - from.x;
       const dy = to.y - from.y;
 
@@ -226,12 +231,29 @@ export class FocusManager {
       const along =
         direction === "left" ? -dx : direction === "right" ? dx : direction === "up" ? -dy : dy;
       if (along <= 1) continue;
-      const across = direction === "left" || direction === "right" ? Math.abs(dy) : Math.abs(dx);
+      const across = horizontal ? Math.abs(dy) : Math.abs(dx);
+
+      // Does the candidate share the row (or column) being moved along?
+      const overlaps = horizontal
+        ? toRect.bottom > fromRect.top && toRect.top < fromRect.bottom
+        : toRect.right > fromRect.left && toRect.left < fromRect.right;
 
       // Weight cross-axis drift heavily so "right" prefers a true neighbour
       // over something far off to the side but slightly closer.
-      const score = along + across * 3;
-      if (!best || score < best.score) best = { el: target.el, score };
+      const entry = { el: target.el, score: along + across * 3 };
+      (overlaps ? aligned : offRow).push(entry);
+    }
+
+    // Stay in the row. Pressing right from the activity feed should reach the
+    // panel beside it or nothing at all - never jump up to the top bar because
+    // it happens to be the only thing further right. Vertical moves may leave
+    // the column, since that is the only way to reach a control that is not
+    // directly above or below, such as the agent name.
+    const candidates = aligned.length > 0 ? aligned : horizontal ? [] : offRow;
+
+    let best: { el: HTMLElement; score: number } | null = null;
+    for (const candidate of candidates) {
+      if (!best || candidate.score < best.score) best = candidate;
     }
 
     if (best) {

@@ -16,6 +16,15 @@
   box-sizing: border-box;
 }
 
+/*
+ * `hidden` must actually hide. The attribute's default `display: none` loses to
+ * any class that sets `display`, which is how a button marked hidden stayed on
+ * screen for a whole release.
+ */
+[hidden] {
+  display: none !important;
+}
+
 html,
 body {
   margin: 0;
@@ -391,23 +400,6 @@ textarea {
 textarea:focus {
   outline: none;
   border-color: var(--accent);
-}
-
-.icon-button {
-  flex: none;
-  width: 48px;
-  height: 48px;
-  border-radius: 12px;
-  border: 1px solid var(--line);
-  background: var(--panel-2);
-  font-size: 20px;
-  display: grid;
-  place-items: center;
-}
-
-.icon-button.recording {
-  background: color-mix(in srgb, var(--danger) 30%, var(--panel-2));
-  border-color: var(--danger);
 }
 
 .send {

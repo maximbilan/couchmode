@@ -1,11 +1,12 @@
 #!/usr/bin/env node
 /**
- * Phone acceptance test: pairing, the transcript mirror, permission options,
- * the agent picker, and the dictation button.
+ * Phone acceptance test: pairing, the transcript mirror, permission options
+ * and the agent picker.
  *
- * Web Speech API support is injected before the page loads, because headless
- * Chrome has no speech engine. That is enough to prove the feature detection
- * and wiring are right; whether Chrome can hear a microphone is not ours.
+ * There is deliberately no in-page dictation. Phone keyboards have their own
+ * microphone key, which works on any origin because it belongs to the OS - and
+ * the Web Speech API never could, since the bridge serves plain HTTP over the
+ * LAN and browsers only expose speech recognition in a secure context.
  *
  * Run via scripts/tv-check.sh, which starts a fresh bridge and browser.
  */
@@ -33,18 +34,7 @@ await cdp.send("Emulation.setDeviceMetricsOverride", {
   mobile: true,
 });
 
-// Stand in for a speech engine so the mic button's feature detection is live.
-await cdp.send("Page.addScriptToEvaluateOnNewDocument", {
-  source: `
-    window.SpeechRecognition = function () {
-      this.lang = ""; this.interimResults = false; this.continuous = false;
-      this.onresult = null; this.onend = null;
-      this.start = () => { window.__micStarted = true; };
-      this.stop = () => { window.__micStopped = true; this.onend && this.onend(); };
-    };
-    localStorage.clear();
-  `,
-});
+await cdp.send("Page.addScriptToEvaluateOnNewDocument", { source: "localStorage.clear();" });
 
 await cdp.send("Page.navigate", { url: `http://localhost:${PORT}/phone` });
 await sleep(1500);
@@ -69,7 +59,7 @@ const main = await evaluate(
   paired: !!document.querySelector('#feed'),
   project: document.querySelector('#project')?.textContent,
   status: document.querySelector('#status')?.textContent,
-  mic: !document.querySelector('#mic')?.hidden,
+  mic: !!document.querySelector('#mic'),
   agentButton: !document.querySelector('#agent-switch')?.hidden,
   noHScroll: document.documentElement.scrollWidth <= document.documentElement.clientWidth,
 })`,
@@ -80,24 +70,12 @@ check(
   !!main.project && !!main.status,
   `${main.project} · ${main.status}`,
 );
-check("the mic button appears in a secure context", main.mic === true);
+check("there is no in-page dictation button", main.mic === false);
 check("no horizontal scroll at 390px wide", main.noHScroll === true);
-
-// Dictation writes into the composer without sending anything.
-await evaluate(cdp, `document.querySelector('#mic').click()`);
-await sleep(300);
-check(
-  "tapping the mic starts recognition",
-  (await evaluate(cdp, `!!window.__micStarted`)) === true,
-);
-check(
-  "the mic button shows it is recording",
-  (await evaluate(cdp, `document.querySelector('#mic').classList.contains('recording')`)) === true,
-);
 
 await evaluate(cdp, `document.querySelector('#input').value = 'summarize this project'; 0`);
 check(
-  "dictated text lands in the composer, unsent",
+  "text lands in the composer, unsent",
   (await evaluate(cdp, `document.querySelector('#input').value`)) === "summarize this project",
 );
 
@@ -159,9 +137,7 @@ check(
 
 // --- the origin a phone actually uses -------------------------------------
 // Everything above ran on localhost, which is a secure context. A real phone
-// loads a LAN IP over plain HTTP, where the browser strips microphone access
-// even though the Speech API object still exists. Offering a button that can
-// never work there is worse than offering none.
+// loads a LAN IP over plain HTTP. There must be no dictation button on either.
 const lan = Object.values(networkInterfaces())
   .flat()
   .find((entry) => entry && entry.family === "IPv4" && !entry.internal)?.address;
@@ -176,21 +152,26 @@ if (!lan) {
     `JSON.stringify({
     secure: window.isSecureContext,
     speechApi: typeof (window.SpeechRecognition || window.webkitSpeechRecognition),
-    micHidden: document.querySelector('#mic')?.hidden ?? null,
+    mic: !!document.querySelector('#mic'),
+    micVisible: (() => {
+      const m = document.querySelector('#mic');
+      return m ? getComputedStyle(m).display !== 'none' : false;
+    })(),
     placeholder: document.querySelector('#input')?.placeholder ?? null,
   })`,
   ).then(JSON.parse);
 
   check("a LAN origin is not a secure context", insecure.secure === false, `http://${lan}:${PORT}`);
   check(
-    "the Speech API still exists there, which is the trap",
+    "the Speech API still exists there, which is why relying on it was a trap",
     insecure.speechApi === "function",
     insecure.speechApi,
   );
-  check("the mic button is hidden when dictation cannot work", insecure.micHidden === true);
+  check("no dictation button exists at a LAN origin", insecure.mic === false);
+  check("nothing mic-shaped is rendered", insecure.micVisible === false);
   check(
-    "the composer points at the keyboard's own dictation instead",
-    /keyboard/i.test(insecure.placeholder ?? ""),
+    "the placeholder stays out of the way",
+    !/dictate|keyboard/i.test(insecure.placeholder ?? ""),
     insecure.placeholder,
   );
 }
