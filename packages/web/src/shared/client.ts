@@ -138,6 +138,11 @@ export class CouchmodeClient {
     this.send({ type: "cancel" });
   }
 
+  /** Mirror in-progress typing to the other clients. */
+  sendDraft(text: string): void {
+    this.send({ type: "prompt_draft", text });
+  }
+
   disconnect(): void {
     this.closedByUs = true;
     this.socket?.close();

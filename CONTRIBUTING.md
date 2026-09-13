@@ -10,8 +10,14 @@ Node 22+ and pnpm.
 pnpm install
 pnpm build
 pnpm check        # typecheck + replay the fixture through the renderer
+pnpm check:tv     # drive /tv in headless Chrome with arrow keys (needs Chrome)
 pnpm lint
 ```
+
+`pnpm check:tv` runs the 10-foot UI against both fixtures in a real browser at
+1920×1080, using only the keys a Fire TV remote has. It writes screenshots to
+`packages/web/.tv-check/`. It skips itself when Chrome is not installed; set
+`CHROME_BIN` to point at another Chromium build.
 
 ## Working without an agent
 
@@ -32,6 +38,13 @@ node packages/bridge/scripts/verify-fixture.mjs fixtures/my-run.jsonl <replay.js
 Recordings scrub the project directory to `/project`, the home directory to
 `/home/user`, and drop authentication traffic. Read a fixture before committing
 it anyway.
+
+There is one hand-written fixture,
+`fixtures/synthetic-plan-and-thoughts.jsonl`. It carries a `"synthetic": true`
+header so nobody mistakes it for a recording, and exists because the real Claude
+run happens to contain no `plan` or `agent_thought_chunk` updates — without it
+those two render paths would ship untested. Prefer a real recording whenever one
+can produce the updates you need.
 
 ## Ground rules
 
