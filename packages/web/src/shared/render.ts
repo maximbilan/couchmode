@@ -3,7 +3,7 @@
  *
  * Turns ACP `session/update` notifications into display items. Every update
  * type we handle - and every one we deliberately ignore - is documented in
- * docs/acp-on-tv.md; the two lists below are the source of truth for that doc.
+ * docs/acp-on-tv.md.
  */
 import type {
   ContentBlock,
@@ -16,17 +16,6 @@ import type {
   ToolCallStatus,
   ToolKind,
 } from "./protocol.js";
-
-/** `sessionUpdate` discriminator values Couchmode renders. */
-export const HANDLED_UPDATES = [
-  "agent_message_chunk",
-  "user_message_chunk",
-  "agent_thought_chunk",
-  "tool_call",
-  "tool_call_update",
-  "plan",
-  "available_commands_update",
-] as const;
 
 /**
  * Update types we accept and intentionally do not render yet, with why.

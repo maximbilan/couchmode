@@ -38,13 +38,8 @@ export class CouchmodeClient {
     return this.state;
   }
 
-  get pairCode(): string | null {
-    return this.code;
-  }
-
-  on<K extends keyof EventMap>(event: K, listener: Listener<K>): () => void {
+  on<K extends keyof EventMap>(event: K, listener: Listener<K>): void {
     this.listeners[event].add(listener);
-    return () => this.listeners[event].delete(listener);
   }
 
   private emit<K extends keyof EventMap>(event: K, payload: EventMap[K]): void {
@@ -146,11 +141,5 @@ export class CouchmodeClient {
   /** Ask the bridge to tear down this agent and start a different one. */
   switchAgent(name: string): void {
     this.send({ type: "switch_agent", name });
-  }
-
-  disconnect(): void {
-    this.closedByUs = true;
-    this.socket?.close();
-    this.setState("offline");
   }
 }

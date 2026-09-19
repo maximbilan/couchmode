@@ -57,14 +57,6 @@ export class PermissionRegistry {
     return this.pending.size;
   }
 
-  list(): PendingPermission[] {
-    return [...this.pending.values()].map(({ requestId, request, options }) => ({
-      requestId,
-      request,
-      options,
-    }));
-  }
-
   /**
    * Register an incoming permission request and return the promise the ACP
    * handler awaits, plus the bridge-minted id used to correlate a decision.

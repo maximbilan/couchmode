@@ -35,7 +35,7 @@ run_case() {
   sleep 1
   rm -rf "$OUT/chrome-profile"
 
-  COUCHMODE_TV_CHECK=1 node "$REPO/packages/bridge/dist/cli.js" \
+  node "$REPO/packages/bridge/dist/cli.js" \
     --fake "$fixture" --code "$code" --port "$port" > "$OUT/bridge-$port.log" 2>&1 &
   local bridge_pid=$!
 

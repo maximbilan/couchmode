@@ -2,7 +2,6 @@
 <resources>
     <string name="app_name">Couchmode</string>
     <string name="setup_title">Connect to your bridge</string>
-    <string name="setup_subtitle">Run <b>couchmode</b> in your project directory. It prints the address and pair code.</string>
     <string name="setup_host_label">Address (host:port)</string>
     <string name="setup_host_hint">192.168.1.10:7777</string>
     <string name="setup_code_label">Pair code</string>

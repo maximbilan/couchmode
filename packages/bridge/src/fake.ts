@@ -57,7 +57,7 @@ export interface FakeAgent {
   kill(): void;
 }
 
-export function createFakeAgent(fixture: Fixture, speed = 1): FakeAgent {
+export function createFakeAgent(fixture: Fixture): FakeAgent {
   let controller: ReadableStreamDefaultController<AnyMessage> | null = null;
   let stopped = false;
 
@@ -179,7 +179,7 @@ export function createFakeAgent(fixture: Fixture, speed = 1): FakeAgent {
         continue;
       }
 
-      const gap = Math.min(Math.max(entry.t - lastT, 0), MAX_GAP_MS) / speed;
+      const gap = Math.min(Math.max(entry.t - lastT, 0), MAX_GAP_MS);
       lastT = entry.t;
       if (gap > 0) await sleep(gap);
       if (stopped) return;
