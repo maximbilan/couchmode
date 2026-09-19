@@ -17,7 +17,6 @@ const agentDefinitionSchema = z.object({
   preferredModes: z.array(z.string()).default([]),
   /** Command the user should run to log in with this agent's own CLI. */
   loginHint: z.string().optional(),
-  docs: z.string().optional(),
 });
 
 export type AgentDefinition = z.infer<typeof agentDefinitionSchema> & { name: string };

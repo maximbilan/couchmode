@@ -769,13 +769,10 @@ declare global {
   interface Window {
     /** Called by the Fire TV shell on KEYCODE_BACK. See handleBack(). */
     couchmodeBack?: () => boolean;
-    /** True once the main screen is up, so the shell can tell pairing apart. */
-    couchmodeReady?: () => boolean;
   }
 }
 
 window.couchmodeBack = handleBack;
-window.couchmodeReady = () => screen === "main";
 
 client.on("state", (state: ConnectionState) => {
   if (state === "rejected") {

@@ -264,11 +264,6 @@ export class CouchmodeAcpClient {
     }
   }
 
-  /** Auth methods the agent advertised, used only to print a terminal hint. */
-  get authMethods(): InitializeResponse["authMethods"] {
-    return this.initializeResponse?.authMethods ?? [];
-  }
-
   /**
    * Queue a prompt. One `session/prompt` is in flight at a time; the agent owns
    * turn boundaries, so we do not start the next until the current one stops.
