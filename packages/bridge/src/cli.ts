@@ -428,7 +428,7 @@ async function main(): Promise<void> {
   process.on("SIGINT", shutdown);
   process.on("SIGTERM", shutdown);
 
-  log("config", "--", `user agents override: ${USER_AGENTS_PATH}`);
+  if (registry.userOverride) log("config", "--", `user agents override: ${USER_AGENTS_PATH}`);
 }
 
 main().catch((error: unknown) => {

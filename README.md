@@ -142,15 +142,30 @@ Agent launch is data, not code: see
 [`packages/bridge/src/config/agents.json`](packages/bridge/src/config/agents.json),
 overridable at `~/.couchmode/agents.json`.
 
-| Agent  | Command                                        | Status                                |
-| ------ | ---------------------------------------------- | ------------------------------------- |
-| Claude | `npx -y @agentclientprotocol/claude-agent-acp` | ✅ tested — recorded fixture included |
-| Codex  | `npx -y @agentclientprotocol/codex-acp`        | ⚪ untested                           |
-| Gemini | `gemini --experimental-acp`                    | ⚪ untested                           |
-| Kiro   | `kiro-cli acp`                                 | ⚪ untested                           |
+| Agent            | Command                                            | Status                                |
+| ---------------- | -------------------------------------------------- | ------------------------------------- |
+| Claude           | `npx -y @agentclientprotocol/claude-agent-acp`     | ✅ tested — recorded fixture included |
+| Claude (Bedrock) | the same adapter, with `CLAUDE_CODE_USE_BEDROCK=1` | 🟡 starts; inference unverified       |
+| Kiro             | `kiro-cli acp`                                     | ✅ tested on Kiro CLI 2.21.4          |
+| Codex            | `npx -y @agentclientprotocol/codex-acp`            | ⚪ untested                           |
+| Gemini           | `gemini --acp --skip-trust`                        | ⚪ untested                           |
 
-Codex, Gemini and Kiro are configured but have not been run yet; they are
-verified in M4.
+Codex and Gemini are configured but have not been run yet.
+
+### Claude on Amazon Bedrock
+
+`--agent claude-bedrock` is the same Claude adapter with one environment
+variable flipped, so the model runs in your own AWS account instead of against
+an Anthropic login. Couchmode sets only `CLAUDE_CODE_USE_BEDROCK`; region,
+credentials and profile come from the standard AWS chain you already have
+(`AWS_PROFILE`, `AWS_REGION`, `~/.aws`, an instance role). Nothing AWS-specific
+is stored by Couchmode, and the agent picker on the TV switches between
+`claude` and `claude-bedrock` without restarting the bridge.
+
+One sharp edge, found the hard way: if those AWS credentials are expired, the
+adapter does not report an auth error — it accepts the prompt and never
+answers. See [`docs/upstream-issues.md`](docs/upstream-issues.md). Run
+`aws sts get-caller-identity` if an agent sits on "Thinking" forever.
 
 ## Authentication
 

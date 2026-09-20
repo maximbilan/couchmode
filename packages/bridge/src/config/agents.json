@@ -13,10 +13,21 @@
     "The directory in question is the one you started couchmode in, so the trust",
     "decision was already made by running the bridge there.",
     "",
+    "'claude-bedrock' is the same Claude adapter pointed at Amazon Bedrock. The only",
+    "difference is CLAUDE_CODE_USE_BEDROCK, which makes the adapter resolve credentials",
+    "through the standard AWS chain (AWS_PROFILE, AWS_REGION, ~/.aws, instance roles)",
+    "instead of an Anthropic login. Region and credentials are deliberately NOT set",
+    "here: entries in 'env' override the ambient environment, so hardcoding a region",
+    "would silently ignore the one you already export. Pick a model with ANTHROPIC_MODEL",
+    "in ~/.couchmode/agents.json if the account's default is not what you want; on",
+    "Bedrock that value is a model or inference-profile id, not an Anthropic model name.",
+    "",
     "'preferredModes' is a priority list of ACP session mode ids. Approving tool calls",
     "from the couch is the whole point of Couchmode, so on startup it switches the",
     "session to the first of these the agent actually offers - agents that default to",
-    "deciding permissions themselves would otherwise never ask. Override with --mode."
+    "deciding permissions themselves would otherwise never ask. Override with --mode.",
+    "Kiro names its modes with a 'kiro_' prefix rather than reusing the conventional",
+    "'default'; kiro_default is the one that asks, so it is listed explicitly."
   ],
   "agents": {
     "claude": {
@@ -27,6 +38,15 @@
       "preferredModes": ["default", "ask"],
       "loginHint": "claude  (then run /login)",
       "docs": "https://github.com/zed-industries/claude-agent-acp"
+    },
+    "claude-bedrock": {
+      "title": "Claude (Bedrock)",
+      "command": "npx",
+      "args": ["-y", "@agentclientprotocol/claude-agent-acp"],
+      "env": { "CLAUDE_CODE_USE_BEDROCK": "1" },
+      "preferredModes": ["default", "ask"],
+      "loginHint": "aws sso login  (or aws configure; any AWS credential chain works)",
+      "docs": "https://docs.claude.com/en/docs/claude-code/amazon-bedrock"
     },
     "codex": {
       "title": "Codex CLI",
@@ -51,7 +71,7 @@
       "command": "kiro-cli",
       "args": ["acp"],
       "env": {},
-      "preferredModes": ["default", "ask"],
+      "preferredModes": ["kiro_default"],
       "loginHint": "kiro-cli login",
       "docs": "https://kiro.dev/docs/cli/acp/"
     }

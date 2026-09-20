@@ -73,3 +73,32 @@ for the record.
 - **What:** the adapter requires Node 22+, so a bridge running on Node 20 can
   start but the spawned agent fails.
 - **Our handling:** the whole repo declares `engines.node >= 22`.
+
+### Bedrock mode hangs on `session/prompt` when AWS credentials are expired
+
+- **Where:** `@agentclientprotocol/claude-agent-acp@0.79.0` with
+  `CLAUDE_CODE_USE_BEDROCK=1`
+- **What:** with expired AWS credentials in the environment, `initialize` and
+  `session/new` both succeed normally — and then `session/prompt` never
+  returns. No `session/update`, no error, no stderr mentioning AWS, Bedrock or
+  credentials. The identical prompt against the same adapter without
+  `CLAUDE_CODE_USE_BEDROCK` finishes in a couple of seconds.
+- **Repro:** export credentials that `aws sts get-caller-identity` rejects with
+  `InvalidClientTokenId`, then spawn the adapter with
+  `CLAUDE_CODE_USE_BEDROCK=1`, `initialize`, `session/new`, and prompt it to
+  create a file. Observed: nothing for 120s. One hint is visible in the
+  adapter's own stderr — the `sdk-initialize` phase takes ~2.8s rather than
+  ~0.3s, which is the AWS credential chain being walked — but it is a timing
+  difference, not a message.
+- **Assessment:** an auth failure that presents as a hang is the worst shape for
+  a 10-foot UI, because the screen just says the agent is thinking. The Gemini
+  case above is the same class of problem at a different point in the
+  lifecycle, and the fix is the same: say something on stderr, or fail the
+  request.
+- **Our handling:** the bridge's 30s handshake timeout does **not** cover this —
+  it bounds `initialize` and `session/new`, and this hang is in `session/prompt`,
+  which is legitimately unbounded because a real turn can take minutes. For now
+  the `claude-bedrock` entry's `loginHint` names `aws sso login`, and the README
+  says to check `aws sts get-caller-identity` when an agent sits on "Thinking".
+  A prompt-level idle timeout — no `session/update` at all within N seconds of a
+  prompt — is the obvious follow-up.
