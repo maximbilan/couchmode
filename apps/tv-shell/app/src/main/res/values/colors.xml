@@ -9,4 +9,12 @@
     <color name="muted">#93A4B8</color>
     <color name="focus">#FFD166</color>
     <color name="danger">#FF6B6B</color>
+
+    <!--
+      Adaptive icon background: the grey Fire TV paints behind a sideloaded
+      app's home-screen tile, sampled off the device. Matching it makes the
+      square icon slot blend into the plate so the tile reads as full width.
+      Amazon changing that grey is the one thing that breaks this.
+    -->
+    <color name="icon_background">#5A5A5A</color>
 </resources>
