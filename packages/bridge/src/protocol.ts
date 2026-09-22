@@ -106,6 +106,7 @@ export type ServerMessage =
   | PermissionResolvedMessage
   | PromptDraftMessage
   | SessionResetMessage
+  | ReplayStartMessage
   | ReplayEndMessage
   | PongMessage
   | ErrorMessage;
@@ -139,6 +140,8 @@ export interface SessionModeSummary {
 export interface AgentSummary {
   name: string;
   title: string;
+  /** The launch command, shown under the title so a picker says what it runs. */
+  command: string;
   /** The agent currently running. */
   active: boolean;
 }
@@ -197,6 +200,24 @@ export interface PromptDraftMessage {
 export interface SessionResetMessage {
   type: "session_reset";
   reason: "agent_switched" | "agent_restarted";
+  /** The agent the new session belongs to, so clients can label it at once. */
+  agentName: string;
+  agentTitle: string;
+  /** The agent being left behind, when this is a switch rather than a restart. */
+  previousTitle: string | null;
+}
+
+/**
+ * The replay buffer follows.
+ *
+ * Everything between this and `replay_end` describes the session as it already
+ * is, not as it just changed - so a client that is re-pairing after a dropped
+ * connection rebuilds its transcript from scratch instead of appending a second
+ * copy of every message it already had.
+ */
+export interface ReplayStartMessage {
+  type: "replay_start";
+  count: number;
 }
 
 export interface ReplayEndMessage {

@@ -137,6 +137,47 @@ Two more form quirks, both fixed in the manifest and layout:
   field being edited. `android:imeOptions="...|flagNoExtractUi"` keeps the form
   visible.
 
+## `onPageFinished` fires for Chromium's error page too
+
+The shell has always had its own "could not reach the bridge" panel with a retry
+button, and it was never seen: `onReceivedError` showed it, and then
+`onPageFinished` — which fires for the error document Chromium loads in place of
+the page — hid it again and revealed a bare `net::ERR_CONNECTION_REFUSED` screen.
+On a television that is a dead end; there is nothing to type and nowhere to go.
+
+`onPageFinished` now returns early when a `loadFailed` flag is set, cleared on
+`onPageStarted` for each new navigation.
+
+The panel also retries by itself, 2s doubling to 15s, with the countdown on
+screen and a "Try now" button for impatience. The bridge runs on a laptop that
+gets closed and reopened, often in another room, so needing someone to walk to
+the TV and press a button is the wrong recovery model. `onResume` retries
+immediately — returning to the app is itself a reason to think the odds have
+changed — and `onStop` cancels the timer.
+
+`apps/tv-shell/scripts/ftv-offline-check.sh` covers both halves against a real
+device: launch with nothing on the port, then start the bridge and assert the
+page comes back with no key press.
+
+## MENU has to be forwarded by hand
+
+The shell intercepts `KEYCODE_MENU` in `dispatchKeyEvent` and returns `true` for
+it unconditionally, because letting it through pops Fire OS's own menu over the
+app. That is right, but it means **the page never sees MENU as a `keydown`**:
+the focus manager's menu handler fires in a desktop browser and never on a
+television, so the agent picker looked reachable in every browser test and was
+unreachable on the device.
+
+Short press is therefore forwarded explicitly on `ACTION_UP`, through a
+`window.couchmodeMenu()` hook, the same shape as the existing
+`window.couchmodeBack()`. Doing it on UP rather than DOWN is what keeps it apart
+from the long press: by then a long press has already opened the setup form and
+set a flag, so the picker does not also open behind it.
+
+The lesson generalises — any key the shell swallows needs a hook, and a browser
+test cannot tell you which keys those are. `apps/tv-shell/scripts/ftv-check.sh`
+covers MENU and BACK with real `input keyevent`s for exactly this reason.
+
 ## Debugging on the device
 
 The shell enables WebView debugging in debug builds only, which makes the page

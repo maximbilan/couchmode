@@ -63,19 +63,60 @@ spatially — there is no tab order, because a remote has no Tab key.
 
 | Button  | What it does                                                                                   |
 | ------- | ---------------------------------------------------------------------------------------------- |
-| ▲ ▼ ◀ ▶ | move focus, or scroll the panel you are in                                                     |
+| ▲ ▼ ◀ ▶ | move focus, or scroll the panel you are in — a page at a time, faster while held               |
 | OK      | activate; on the prompt bar it opens a text field; on Activity it expands the agent's thinking |
-| Back    | close the composer, or answer a permission request with its deny option                        |
+| Back    | close what is open, answer a permission request with its deny option, or jump to the latest    |
+| MENU    | switch agents (long press opens the Fire TV shell's own settings form)                         |
 
 The **Changes** panel only appears once the agent has actually changed a file.
 Until then the activity feed has the screen to itself, rather than half of it
 being spent on an empty box.
 
-Focus the agent's name in the top bar (or press **MENU**) to switch agents
-without restarting the bridge. Switching ends the ACP session — a session
-belongs to the agent that created it — so the transcript is cleared and the
-picker says so before you choose. Choosing the agent that is already running
-restarts it, which is what you want when one has wedged.
+### Getting out of a long conversation
+
+An hour-old transcript is taller than the screen many times over, and ▼ scrolls
+the feed rather than leaving it — so on a naive design the prompt bar recedes as
+the conversation grows, and while the agent is streaming it can recede faster
+than you can scroll.
+
+Three things keep that bounded. A press moves most of a page rather than a fixed
+sliver; holding the button accelerates; and **Back always returns to the
+present** in one press, whatever you were reading. The prompt bar is then one ▼
+away — two presses from anywhere, however long the conversation.
+
+While you are scrolled up, the feed says so: a chip counts what has arrived
+since and names the button that catches you up. What is on screen is no longer
+live, and a 10-foot UI should never leave that ambiguous.
+
+### Knowing whether it is connected
+
+The top bar states the link in words — **Connected**, **Reconnecting…**,
+**Disconnected · retrying in 4s** — because at three metres a small green dot
+and a small grey one are the same dot. While the link is down the agent's status
+is dimmed: "Thinking" describes what was true before the drop, not now.
+
+Couchmode notices a link that has gone quiet as well as one that has closed. A
+TV that sleeps, or an access point that hands the client to another radio,
+leaves a socket the browser still calls open and the bridge never hears from
+again; a 15-second application-level ping is the only thing that catches it.
+
+Reconnecting re-pairs, and pairing replays the session so far, so the transcript
+is rebuilt rather than appended to — reconnect as often as you like and nothing
+is duplicated. The feed marks where it caught up.
+
+### Switching agents
+
+Focus the agent's name in the top bar, or press **MENU**, to switch agents
+without restarting the bridge. The picker names the command each agent would
+actually run, because four rows that all say "CLI" are not a choice.
+
+Switching ends the ACP session — a session belongs to the agent that created it
+— so the transcript and any pending approvals are cleared, and the picker says
+so before you choose. The new session announces itself: the top bar shows the
+incoming agent as it starts, a rule across the feed says which agent the session
+belongs to and what it replaced, and a banner confirms when it is ready to take
+a prompt. Choosing the agent that is already running restarts it, which is what
+you want when one has wedged.
 
 When the agent asks permission, a modal takes focus and shows the agent's own
 options in the order it gave them. See
@@ -105,10 +146,20 @@ reinstalling an APK.
 Two Fire OS behaviours worth knowing as a user:
 
 - **Back** closes whatever is open — the composer, or a permission request
-  (answering it with its deny option). It only leaves the app when nothing is
-  open.
+  (answering it with its deny option) — then catches the feed up to the latest
+  activity. It only leaves the app when there is nothing left to do.
 - While the on-screen keyboard is up, **Back is how you send a prompt**. Fire OS
   commits the text when the keyboard closes. There is also a Send button.
+
+If the bridge is not running when the app starts — or it goes away while the TV
+is on — the shell says so, counts down, and keeps retrying by itself until the
+page loads. Reopening a laptop lid in another room is enough; nothing needs
+pressing on the TV.
+
+**MENU** is two buttons in one: a short press opens the agent picker, a long
+press opens the shell's own settings form. The shell swallows the key either way
+so Fire OS cannot pop its own menu over the app, and hands the short press to
+the page the same way it hands over Back.
 
 The full friction log, including the two bugs this shook out, is in
 [`docs/firetv-notes.md`](docs/firetv-notes.md).

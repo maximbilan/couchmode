@@ -138,6 +138,16 @@ body {
   margin: 0;
 }
 
+.pairing .pair-status {
+  font-size: 26px;
+  color: var(--accent);
+  margin-top: 24px;
+}
+
+.pairing .pair-status.stuck {
+  color: var(--warn);
+}
+
 .pairing .error {
   color: var(--danger);
   font-size: 28px;
@@ -226,6 +236,57 @@ body {
   border-color: color-mix(in srgb, var(--danger) 55%, transparent);
 }
 
+/* Offline, the agent status we last heard describes the past. Dimming it is
+   the difference between "the agent is thinking" and "the agent was thinking
+   when we could still hear it". */
+.status-pill[data-stale="true"] {
+  opacity: 0.4;
+  filter: saturate(0.4);
+}
+
+/* Connection, stated in words rather than implied by an icon: from three
+   metres a small green dot is indistinguishable from a small grey one. */
+.link-pill {
+  font-size: 24px;
+  font-weight: 700;
+  padding: 8px 20px;
+  border-radius: 999px;
+  border: 2px solid var(--line);
+  background: var(--panel-2);
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.link-pill[data-link="paired"] {
+  color: var(--ok);
+  border-color: color-mix(in srgb, var(--ok) 45%, transparent);
+}
+
+.link-pill[data-link="connecting"],
+.link-pill[data-link="reconnecting"],
+.link-pill[data-link="pairing"] {
+  color: var(--accent);
+  border-color: color-mix(in srgb, var(--accent) 45%, transparent);
+  animation: link-pulse 1.4s ease-in-out infinite;
+}
+
+.link-pill[data-link="offline"],
+.link-pill[data-link="rejected"] {
+  color: #1d1500;
+  background: var(--warn);
+  border-color: var(--warn);
+}
+
+@keyframes link-pulse {
+  50% {
+    opacity: 0.55;
+  }
+}
+
+.topbar .agent[data-switching="true"] {
+  color: var(--accent);
+}
+
 .clients {
   display: flex;
   gap: 10px;
@@ -252,12 +313,31 @@ body {
 }
 
 .panel {
+  position: relative;
   background: var(--panel);
   border: 1px solid var(--line);
   border-radius: var(--radius);
   display: flex;
   flex-direction: column;
   min-height: 0;
+}
+
+/* Scrolled up in a long transcript, the screen stops being the present tense.
+   This says so, counts what has been missed, and names the button that undoes
+   it - the whole escape route in one line, over the content it describes. */
+.jump-chip {
+  position: absolute;
+  right: 26px;
+  bottom: 22px;
+  padding: 10px 22px;
+  border-radius: 999px;
+  background: var(--accent);
+  color: #06121f;
+  font-size: 24px;
+  font-weight: 700;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+  pointer-events: auto;
+  cursor: pointer;
 }
 
 .panel-head {
@@ -473,6 +553,30 @@ body {
 .plan .entry[data-status="in_progress"] {
   color: var(--accent);
   font-weight: 600;
+}
+
+/* Where one ACP session ends and the next begins. A cleared transcript on its
+   own looks like a crash; a ruled line that names the incoming agent looks like
+   what it is. */
+.session-mark {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 18px 22px;
+  border: 1px dashed color-mix(in srgb, var(--accent) 45%, transparent);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--accent) 10%, var(--panel-2));
+}
+
+.session-mark .title {
+  font-size: 28px;
+  font-weight: 700;
+  color: var(--accent);
+}
+
+.session-mark .detail {
+  font-size: 24px;
+  color: var(--muted);
 }
 
 .empty {
@@ -705,6 +809,14 @@ body {
 
 .option.agent-option {
   flex: 1 1 40%;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: center;
+  gap: 4px;
+  min-height: 118px;
+  padding: 14px 26px;
+  text-align: left;
   background: var(--panel-2);
   border-color: var(--line);
 }
@@ -712,6 +824,54 @@ body {
 .option.agent-option[data-active="true"] {
   background: color-mix(in srgb, var(--accent) 22%, var(--panel-2));
   border-color: color-mix(in srgb, var(--accent) 55%, transparent);
+}
+
+.agent-option .agent-name {
+  font-size: 30px;
+  font-weight: 700;
+}
+
+/* What the bridge will actually spawn. Four titles that all say "CLI" are not
+   a choice; the command is. */
+.agent-option .agent-command {
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  font-size: 19px;
+  color: var(--muted);
+  font-weight: 400;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.agent-option .agent-tag {
+  font-size: 19px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.agent-option[data-active="true"] .agent-tag {
+  color: var(--accent);
+}
+
+/* A switch takes seconds. The picker stays up and says what it is doing rather
+   than vanishing and leaving the wait unexplained. */
+.picker-options.busy {
+  opacity: 0.45;
+}
+
+.modal .picker-state {
+  flex: none;
+  padding: 0 36px 30px;
+  font-size: 28px;
+  font-weight: 700;
+  color: var(--accent);
+}
+
+.modal .picker-state.error {
+  color: var(--danger);
 }
 
 .modal .resolved {
@@ -722,18 +882,35 @@ body {
 
 /* --------------------------------------------------------------- banners */
 
+/* One banner, four meanings, told apart by colour as well as by reading it:
+   from a sofa the colour lands first and the sentence second. */
 .banner {
   flex: none;
   padding: 14px var(--gap);
   font-size: 26px;
-  background: color-mix(in srgb, var(--danger) 24%, var(--panel));
-  border-bottom: 1px solid color-mix(in srgb, var(--danger) 45%, transparent);
+  background: var(--panel-2);
+  border-bottom: 1px solid var(--line);
   white-space: pre-wrap;
+}
+
+.banner.bad {
+  background: color-mix(in srgb, var(--danger) 24%, var(--panel));
+  border-bottom-color: color-mix(in srgb, var(--danger) 45%, transparent);
 }
 
 .banner.offline {
   background: color-mix(in srgb, var(--warn) 22%, var(--panel));
   border-bottom-color: color-mix(in srgb, var(--warn) 45%, transparent);
+}
+
+.banner.good {
+  background: color-mix(in srgb, var(--ok) 20%, var(--panel));
+  border-bottom-color: color-mix(in srgb, var(--ok) 45%, transparent);
+}
+
+.banner.info {
+  background: color-mix(in srgb, var(--accent) 20%, var(--panel));
+  border-bottom-color: color-mix(in srgb, var(--accent) 45%, transparent);
 }
 
 .hintbar {

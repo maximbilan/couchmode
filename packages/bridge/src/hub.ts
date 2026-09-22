@@ -129,6 +129,10 @@ export class Hub {
       // One hello to everyone, so the new client is greeted and the existing
       // ones see the updated client list, then catch this client up.
       this.announceClients();
+      // Bracket the replay. A client that is re-pairing after a dropped
+      // connection already holds a transcript; `replay_start` tells it to drop
+      // that and rebuild from what follows, rather than appending a duplicate.
+      this.sendTo(peer, { type: "replay_start", count: this.history.length });
       for (const entry of this.history) this.sendTo(peer, entry);
       this.sendTo(peer, { type: "replay_end", count: this.history.length });
       return;

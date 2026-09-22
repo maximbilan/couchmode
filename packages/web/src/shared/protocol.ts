@@ -42,6 +42,8 @@ export interface SessionModeSummary {
 export interface AgentSummary {
   name: string;
   title: string;
+  /** The launch command, shown under the title in the picker. */
+  command: string;
   active: boolean;
 }
 
@@ -82,6 +84,17 @@ export interface PromptDraftMessage {
 export interface SessionResetMessage {
   type: "session_reset";
   reason: "agent_switched" | "agent_restarted";
+  /** The agent the new session belongs to, known before the corrected `hello`. */
+  agentName: string;
+  agentTitle: string;
+  /** The agent left behind, when this is a switch rather than a restart. */
+  previousTitle: string | null;
+}
+
+/** The replay buffer follows: rebuild the transcript rather than appending. */
+export interface ReplayStartMessage {
+  type: "replay_start";
+  count: number;
 }
 
 export interface ReplayEndMessage {
@@ -106,6 +119,7 @@ export type ServerMessage =
   | PermissionResolvedMessage
   | PromptDraftMessage
   | SessionResetMessage
+  | ReplayStartMessage
   | ReplayEndMessage
   | PongMessage
   | ErrorMessage;

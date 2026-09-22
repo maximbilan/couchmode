@@ -4,8 +4,10 @@ import android.annotation.SuppressLint
 import android.app.Activity
 import android.content.pm.ApplicationInfo
 import android.graphics.Color
-import android.util.Log
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
+import android.util.Log
 import android.view.KeyEvent
 import android.view.View
 import android.view.WindowManager
@@ -33,6 +35,17 @@ class MainActivity : Activity() {
     private companion object {
         const val TAG = "Couchmode"
         const val MENU_LONG_PRESS_MS = 500L
+
+        /**
+         * Reload backoff after a failed page load.
+         *
+         * The bridge lives on a laptop that gets closed, slept and reopened, so
+         * "the page would not load" is a normal state to pass through rather
+         * than a dead end. Capped low: someone is sitting in front of this
+         * waiting for it to come back, not reading logs.
+         */
+        const val RELOAD_MIN_MS = 2_000L
+        const val RELOAD_MAX_MS = 15_000L
     }
 
     private lateinit var webView: WebView
@@ -41,6 +54,24 @@ class MainActivity : Activity() {
 
     private var settings = BridgeSettings("", "")
     private var showingSetup = false
+
+    /** Set when MENU opened setup, so the matching ACTION_UP is not a short press. */
+    private var menuWasLongPress = false
+
+    /**
+     * The last main-frame load failed.
+     *
+     * Needed because `onPageFinished` also fires for Chromium's *own* error
+     * document. Without this flag that callback runs after `onReceivedError`,
+     * hides the panel it just showed, and reveals a `net::ERR_CONNECTION_REFUSED`
+     * page the remote can do nothing with.
+     */
+    private var loadFailed = false
+
+    private val reloadHandler = Handler(Looper.getMainLooper())
+    private var reloadDelayMs = RELOAD_MIN_MS
+    private var reloadAtMs = 0L
+    private var reloadTick: Runnable? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -53,6 +84,15 @@ class MainActivity : Activity() {
     override fun onResume() {
         super.onResume()
         applyImmersiveMode()
+        // Coming back to the app is itself a "try now": whatever the backoff had
+        // settled on, the odds that the bridge is up have just changed.
+        if (loadFailed && !showingSetup) reloadNow()
+    }
+
+    override fun onStop() {
+        super.onStop()
+        // Nothing to retry into while the app is not on screen.
+        cancelReload()
     }
 
     // ---------------------------------------------------------------- setup
@@ -121,7 +161,7 @@ class MainActivity : Activity() {
         errorPanel = findViewById(R.id.errorPanel)
         errorText = findViewById(R.id.errorText)
 
-        findViewById<Button>(R.id.retryButton).setOnClickListener { loadBridge() }
+        findViewById<Button>(R.id.retryButton).setOnClickListener { reloadNow() }
         findViewById<Button>(R.id.settingsButton).setOnClickListener { showSetup() }
 
         // Debug builds only: lets `adb forward` + chrome://inspect reach the page,
@@ -151,7 +191,17 @@ class MainActivity : Activity() {
         }
 
         webView.webViewClient = object : WebViewClient() {
+            override fun onPageStarted(view: WebView, url: String, favicon: android.graphics.Bitmap?) {
+                loadFailed = false
+            }
+
             override fun onPageFinished(view: WebView, url: String) {
+                // Chromium's error page finishes loading too. Revealing the
+                // WebView here regardless is what put `ERR_CONNECTION_REFUSED`
+                // on the television instead of the panel with the Retry button.
+                if (loadFailed) return
+                reloadDelayMs = RELOAD_MIN_MS
+                cancelReload()
                 errorPanel.visibility = View.GONE
                 webView.visibility = View.VISIBLE
                 webView.requestFocus()
@@ -164,7 +214,9 @@ class MainActivity : Activity() {
             ) {
                 // Subresource failures are not worth a full-screen error.
                 if (!request.isForMainFrame) return
-                showLoadError()
+                Log.i(TAG, "load failed: ${error.errorCode} ${error.description}")
+                loadFailed = true
+                scheduleReload()
             }
         }
 
@@ -172,14 +224,68 @@ class MainActivity : Activity() {
     }
 
     private fun loadBridge() {
+        cancelReload()
+        loadFailed = false
         errorPanel.visibility = View.GONE
         webView.visibility = View.VISIBLE
         webView.loadUrl(settings.tvUrl())
         webView.requestFocus()
     }
 
-    private fun showLoadError() {
-        errorText.text = getString(R.string.error_load_failed, settings.host)
+    /** Try again immediately, from the shortest backoff. The Retry button, and onResume. */
+    private fun reloadNow() {
+        reloadDelayMs = RELOAD_MIN_MS
+        loadBridge()
+    }
+
+    /**
+     * Keep trying, and say so.
+     *
+     * The page failing to load is not a state a remote can fix - there is
+     * nothing to type and nowhere to go - so the only useful behaviour is to
+     * keep trying and tell the room what it is waiting for. The bridge coming
+     * back then needs no press at all, which matters when it is a laptop lid
+     * being reopened in another room.
+     */
+    private fun scheduleReload() {
+        cancelReload()
+        reloadAtMs = System.currentTimeMillis() + reloadDelayMs
+        reloadDelayMs = (reloadDelayMs * 2).coerceAtMost(RELOAD_MAX_MS)
+
+        val tick = object : Runnable {
+            override fun run() {
+                val remaining = reloadAtMs - System.currentTimeMillis()
+                if (remaining <= 0) {
+                    showRetrying()
+                    loadFailed = false
+                    webView.loadUrl(settings.tvUrl())
+                    return
+                }
+                showLoadError(((remaining + 999) / 1000).toInt())
+                reloadHandler.postDelayed(this, 1_000)
+            }
+        }
+        reloadTick = tick
+        tick.run()
+    }
+
+    private fun cancelReload() {
+        reloadTick?.let { reloadHandler.removeCallbacks(it) }
+        reloadTick = null
+    }
+
+    private fun showLoadError(retryInSeconds: Int) {
+        errorText.text = getString(R.string.error_load_failed, settings.host, retryInSeconds)
+        revealErrorPanel()
+    }
+
+    private fun showRetrying() {
+        errorText.text = getString(R.string.error_load_retrying, settings.host)
+        revealErrorPanel()
+    }
+
+    private fun revealErrorPanel() {
+        if (errorPanel.visibility == View.VISIBLE) return
         webView.visibility = View.GONE
         errorPanel.visibility = View.VISIBLE
         findViewById<Button>(R.id.retryButton).requestFocus()
@@ -188,8 +294,9 @@ class MainActivity : Activity() {
     // ----------------------------------------------------------------- keys
 
     /**
-     * MENU opens the setup form on long press, so the address can be changed
-     * without clearing app data.
+     * MENU is two buttons in one: long press opens the setup form, so the
+     * address can be changed without clearing app data, and short press is the
+     * page's agent picker.
      *
      * Handled in dispatchKeyEvent rather than onKeyDown: the WebView has focus
      * and consumes MENU before the activity's onKeyDown fallback ever runs.
@@ -198,18 +305,37 @@ class MainActivity : Activity() {
      * Long press is detected from the event itself. A held remote key sets
      * FLAG_LONG_PRESS on a repeat, and `input keyevent --longpress` sets it on
      * a single event, so counting repeats by hand never fires for either.
+     *
+     * The short press is forwarded on ACTION_UP the same way Back is, via a
+     * hook the page owns. Doing it on UP is what keeps the two apart: by then
+     * a long press has already opened setup and set `menuWasLongPress`, so the
+     * picker does not also appear behind the form.
      */
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
         if (event.keyCode == KeyEvent.KEYCODE_MENU) {
-            if (event.action == KeyEvent.ACTION_DOWN) {
-                val heldLongEnough = event.eventTime - event.downTime >= MENU_LONG_PRESS_MS
-                if (event.isLongPress || heldLongEnough) {
-                    Log.i(TAG, "MENU long press: reopening setup")
-                    showSetup()
+            when (event.action) {
+                KeyEvent.ACTION_DOWN -> {
+                    val heldLongEnough = event.eventTime - event.downTime >= MENU_LONG_PRESS_MS
+                    if (event.isLongPress || heldLongEnough) {
+                        Log.i(TAG, "MENU long press: reopening setup")
+                        menuWasLongPress = true
+                        showSetup()
+                    }
+                }
+                KeyEvent.ACTION_UP -> {
+                    val wasLong = menuWasLongPress
+                    menuWasLongPress = false
+                    if (!wasLong && !showingSetup && ::webView.isInitialized) {
+                        Log.i(TAG, "MENU short press: handing to the page")
+                        webView.evaluateJavascript(
+                            "(function(){ try { return !!(window.couchmodeMenu &&" +
+                                " window.couchmodeMenu()); } catch (e) { return false; } })()",
+                        ) { result -> Log.i(TAG, "MENU: page handled = $result") }
+                    }
                 }
             }
-            // Swallow MENU either way: a short press has nothing to do, and
-            // letting it through pops Fire OS's own menu over the app.
+            // Swallow MENU either way: letting it through pops Fire OS's own
+            // menu over the app.
             return true
         }
         return super.dispatchKeyEvent(event)

@@ -166,16 +166,34 @@ export class FocusManager {
   focusFirstInLayer(): void {
     const candidates = this.inActiveLayer().sort((a, b) => (a.priority ?? 0) - (b.priority ?? 0));
     const first = candidates[0];
-    if (first) this.focus(first.el);
-    else this.current = null;
+    if (first) {
+      this.focus(first.el);
+      return;
+    }
+    // Nothing focusable here. Drop the ring as well as the pointer: a layer
+    // with no targets must not leave a bright focus ring sitting on whatever
+    // was focused underneath it, which from a sofa reads as "the remote is
+    // pointed there" when it is not.
+    this.clearRing();
+    this.current = null;
   }
 
   focus(el: HTMLElement): void {
-    if (this.current) this.current.classList.remove("focused");
+    // Clear every ring, not just the one we believe is current. The two can
+    // diverge when a layer is torn down while an overlay is being rebuilt, and
+    // the symptom - a modal on screen with the ring on the prompt bar behind
+    // it - is exactly the kind of thing nobody can diagnose from across a room.
+    this.clearRing();
     this.current = el;
     el.classList.add("focused");
     el.focus({ preventScroll: true });
     el.scrollIntoView({ block: "nearest", inline: "nearest" });
+  }
+
+  /** There is exactly one focus ring on screen, or none. */
+  private clearRing(): void {
+    this.current?.classList.remove("focused");
+    for (const target of this.targets) target.el.classList.remove("focused");
   }
 
   /** Handle a remote button. Returns true when the key was consumed. */
@@ -270,19 +288,68 @@ function isVisible(el: HTMLElement): boolean {
   return rect.width > 0 && rect.height > 0;
 }
 
+export interface ScrollerOptions {
+  /** Floor for one press, for panels shorter than a page. */
+  minStep?: number;
+  /** Fraction of the visible height one press moves. */
+  page?: number;
+  /** Called after a pan, so the owner can react to a deliberate scroll. */
+  onPan?: (key: "up" | "down") => void;
+}
+
+/** Consecutive presses closer together than this count as a held button. */
+const REPEAT_WINDOW_MS = 450;
+/** How far a held button accelerates. Four presses covers a very long feed. */
+const MAX_ACCELERATION = 4;
+
 /**
  * Turn an element into a D-pad scroller: up/down pan the content, and the key
  * is released back to the focus manager only once the edge is reached, so focus
  * leaves the panel exactly when there is nothing left to scroll.
+ *
+ * Two things make that bearable on a transcript that has grown to thousands of
+ * pixels. A press moves most of a page rather than a fixed sliver, and holding
+ * the button accelerates - the remote repeats the key, and each repeat inside
+ * REPEAT_WINDOW_MS scrolls further than the last. Without both, "get me back
+ * to the prompt bar" is dozens of presses, and while the agent is streaming the
+ * content can grow faster than a fixed step can chase it.
  */
-export function scrollerKeyHandler(el: HTMLElement, step = 220): (key: NavKey) => boolean {
+export function scrollerKeyHandler(
+  el: HTMLElement,
+  options: ScrollerOptions | number = {},
+): (key: NavKey) => boolean {
+  // A number still means "minimum step", which is how the modal detail pane
+  // and older call sites use it.
+  const {
+    minStep = 220,
+    page = 0.85,
+    onPan,
+  } = typeof options === "number" ? { minStep: options } : options;
+
+  let lastKey: NavKey | null = null;
+  let lastAt = 0;
+  let repeats = 0;
+
   return (key) => {
     if (key !== "up" && key !== "down") return false;
     const atTop = el.scrollTop <= 0;
     const atBottom = el.scrollTop + el.clientHeight >= el.scrollHeight - 1;
     if (key === "up" && atTop) return false;
     if (key === "down" && atBottom) return false;
-    el.scrollBy({ top: key === "up" ? -step : step, behavior: "smooth" });
+
+    const now = Date.now();
+    repeats = key === lastKey && now - lastAt < REPEAT_WINDOW_MS ? repeats + 1 : 0;
+    lastKey = key;
+    lastAt = now;
+
+    const step = Math.max(minStep, el.clientHeight * page);
+    const accelerated = step * Math.min(1 + repeats * 0.5, MAX_ACCELERATION);
+    // Instant, not smooth. A held D-pad repeats every few dozen milliseconds,
+    // so smooth scrolling queues animations the viewer then has to wait out -
+    // and a transcript that is still growing can re-pin itself to the bottom
+    // during one, undoing the scroll that is halfway through playing.
+    el.scrollBy({ top: key === "up" ? -accelerated : accelerated, behavior: "auto" });
+    onPan?.(key);
     return true;
   };
 }

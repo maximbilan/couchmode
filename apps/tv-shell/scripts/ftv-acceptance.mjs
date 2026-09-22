@@ -60,7 +60,9 @@ const layout = await evaluate(
   cdp,
   `JSON.stringify({ w: innerWidth, h: innerHeight,
     feed: Math.round(document.querySelector('#feed').getBoundingClientRect().width),
-    diff: Math.round(document.querySelector('#diff').getBoundingClientRect().width),
+    diffHidden: document.querySelector('#diff-panel')?.hidden ?? null,
+    link: document.querySelector('#link')?.textContent,
+    linkState: document.querySelector('#link')?.dataset?.link ?? null,
     font: getComputedStyle(document.body).fontSize })`,
 ).then(JSON.parse);
 check(
@@ -68,18 +70,63 @@ check(
   layout.w === 1920 && layout.h === 1080,
   `${layout.w}x${layout.h}`,
 );
+// Nothing has changed a file yet, so the Changes panel is not on screen and the
+// feed has the width to itself.
+check("the Changes panel is hidden until a file changes", layout.diffHidden === true);
 check(
-  "60/40 split survives the WebView",
-  Math.abs(layout.feed / (layout.feed + layout.diff) - 0.6) < 0.04,
-  `${layout.feed}/${layout.diff}`,
+  "the feed spans the full width while Changes is hidden",
+  layout.feed > layout.w * 0.9,
+  `${layout.feed}px of ${layout.w}px`,
 );
 check("body text is 28px", layout.font === "28px", layout.font);
+check(
+  "the top bar says the bridge is connected",
+  layout.linkState === "paired" && /connected/i.test(layout.link ?? ""),
+  `${layout.link} (${layout.linkState})`,
+);
 
 // --- the remote drives focus inside the page -----------------------------
 await key("KEYCODE_DPAD_RIGHT");
-check("remote DPAD_RIGHT moves focus to the diff panel", (await focusId()) === "diff");
-await key("KEYCODE_DPAD_LEFT");
-check("remote DPAD_LEFT returns to the feed", (await focusId()) === "feed");
+check("remote DPAD_RIGHT does not reach a hidden Changes panel", (await focusId()) === "feed");
+
+// --- short-press MENU reaches the page -----------------------------------
+// The shell swallows MENU so Fire OS cannot pop its own menu over the app,
+// which means the page never sees it as a keydown. Without the shell forwarding
+// it, the agent picker is unreachable on a real remote however well it works in
+// a desktop browser. Checked here, while nothing else is open: the picker is
+// deliberately refused while an approval is pending.
+await key("KEYCODE_MENU");
+await sleep(600);
+const picker = await evaluate(
+  cdp,
+  `JSON.stringify((() => {
+  const p = document.querySelector('#agent-picker');
+  if (!p) return null;
+  return {
+    agents: p.querySelectorAll('.agent-option').length,
+    commands: [...p.querySelectorAll('.agent-command')].filter((e) => e.textContent.trim()).length,
+    focusedInPicker: !!document.querySelector('.focused')?.closest('#agent-picker'),
+  };
+})())`,
+).then(JSON.parse);
+check(
+  "short-press MENU opens the agent picker on the device",
+  (picker?.agents ?? 0) > 1 && picker?.focusedInPicker === true,
+  picker ? `${picker.agents} agents, ${picker.commands} commands` : "no picker",
+);
+check(
+  "every agent row names the command it would run",
+  picker?.commands === picker?.agents,
+  `${picker?.commands}/${picker?.agents}`,
+);
+await key("KEYCODE_BACK");
+await sleep(400);
+check(
+  "hardware BACK closes the picker",
+  (await evaluate(cdp, `!document.querySelector('#agent-picker')`)) === true,
+);
+check("hardware BACK did not leave the app", currentWindow().includes("com.couchmode.tv"));
+
 await key("KEYCODE_DPAD_DOWN");
 check("remote DPAD_DOWN reaches the prompt bar", (await focusId()) === "prompt");
 

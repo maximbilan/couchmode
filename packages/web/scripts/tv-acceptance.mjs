@@ -100,6 +100,9 @@ const layout = await evaluate(
     branch: g('#branch')?.textContent,
     agent: g('#agent')?.textContent,
     status: g('#status')?.textContent,
+    link: g('#link')?.textContent,
+    linkState: g('#link')?.dataset?.link ?? null,
+    statusStale: g('#status')?.dataset?.stale ?? null,
     clients: g('#clients')?.textContent,
     feedW: r(feed)?.width, diffW: r(diff)?.width,
     diffPanelHidden: g('#diff-panel')?.hidden ?? null,
@@ -123,6 +126,18 @@ check(
   `${layout.project} | ${layout.branch} | ${layout.agent} | ${layout.status}`,
 );
 check("clients indicator present", /📺|📱/.test(layout.clients ?? ""), layout.clients);
+// The link is stated in words. From three metres a small green dot and a small
+// grey one are the same dot, so "Connected" has to be readable text.
+check(
+  "the top bar says the bridge is connected",
+  layout.linkState === "paired" && /connected/i.test(layout.link ?? ""),
+  `${layout.link} (${layout.linkState})`,
+);
+check(
+  "the agent status is not marked stale while connected",
+  layout.statusStale === "false",
+  layout.statusStale ?? "unset",
+);
 // Before any file changes there is nothing to put in the Changes panel, so it
 // is not on screen at all and the feed has the width to itself.
 check("the Changes panel is hidden until there is a diff", layout.diffPanelHidden === true);
@@ -181,6 +196,7 @@ const picker = await evaluate(
   if (!p) return null;
   return {
     options: [...p.querySelectorAll('.agent-option')].map((b) => b.textContent.trim()),
+    commands: [...p.querySelectorAll('.agent-option .agent-command')].map((e) => e.textContent.trim()),
     active: [...p.querySelectorAll('.agent-option')].filter((b) => b.dataset.active === 'true').length,
     focused: document.querySelector('.focused')?.textContent?.trim() ?? null,
     warns: /new session/i.test(p.querySelector('.picker-note')?.textContent ?? ''),
@@ -198,6 +214,13 @@ check(
   picker?.focused,
 );
 check("the picker warns that switching starts a new session", picker?.warns === true);
+// Four rows that all say "CLI" are not a choice; the command is what differs.
+check(
+  "each agent row names the command it would run",
+  (picker?.commands.length ?? 0) === (picker?.options.length ?? 0) &&
+    picker?.commands.every((c) => c.length > 0) === true,
+  picker?.commands.join(" | "),
+);
 
 await press(cdp, "Escape");
 await sleep(300);
@@ -282,6 +305,22 @@ if (modal) {
   })()`,
   );
   check("modal steals focus (feed unreachable)", stillInModal === true);
+
+  // Exactly one ring, and it is inside the modal. Two rings, or a ring left
+  // behind on the prompt bar, is unreadable from a sofa: it says the remote is
+  // pointed somewhere it is not.
+  const rings = await evaluate(
+    cdp,
+    `JSON.stringify((() => {
+    const all = [...document.querySelectorAll('.focused')];
+    return { count: all.length, inModal: all.every((e) => !!e.closest('#permission-modal')) };
+  })())`,
+  ).then(JSON.parse);
+  check(
+    "exactly one focus ring, inside the modal",
+    rings.count === 1 && rings.inModal === true,
+    `${rings.count} ring(s), inModal=${rings.inModal}`,
+  );
 
   // That ArrowUp left focus on the scrollable detail box. Horizontal moves stay
   // within a row, so Down is the way back to the buttons.
@@ -431,6 +470,90 @@ check(
   `${feed.tools} tools: ${feed.toolTitles.join(" | ")}`,
 );
 
+// --- escaping a long transcript ------------------------------------------
+// The reported problem: scroll up to read something in a long conversation and
+// the remote is stranded. The feed is a scroller, so it eats every down press
+// until it reaches the bottom - and while the agent is streaming, the bottom
+// keeps moving away. Reaching the prompt bar has to be bounded, not linear in
+// the length of the conversation.
+await press(cdp, "ArrowLeft"); // off the diff panel, back onto the feed
+await sleep(250);
+
+const beforeScroll = await evaluate(
+  cdp,
+  `JSON.stringify((() => {
+  const f = document.querySelector('#feed');
+  const chip = document.querySelector('#feed-jump');
+  return {
+    focused: document.querySelector('.focused')?.id ?? null,
+    top: f.scrollTop,
+    page: f.clientHeight,
+    max: f.scrollHeight - f.clientHeight,
+    chipShown: chip ? !chip.hidden : null,
+  };
+})())`,
+).then(JSON.parse);
+check("the remote is on the feed", beforeScroll.focused === "feed", beforeScroll.focused ?? "none");
+check(
+  "the feed is long enough to strand the remote",
+  beforeScroll.max > 40,
+  `${Math.round(beforeScroll.max)}px of scroll below the fold`,
+);
+
+// One press of up must cover most of a screen, not a fixed sliver: this is the
+// difference between a handful of presses and dozens.
+await press(cdp, "ArrowUp");
+await sleep(700);
+const scrolledUp = await evaluate(
+  cdp,
+  `JSON.stringify((() => {
+  const f = document.querySelector('#feed');
+  const chip = document.querySelector('#feed-jump');
+  return {
+    top: f.scrollTop,
+    chipShown: chip ? !chip.hidden : false,
+    chipText: chip?.textContent?.trim() ?? null,
+  };
+})())`,
+).then(JSON.parse);
+const moved = beforeScroll.top - scrolledUp.top;
+check(
+  "one press scrolls most of a page",
+  moved >= Math.min(beforeScroll.max, beforeScroll.page * 0.7),
+  `moved ${Math.round(moved)}px of a ${Math.round(beforeScroll.page)}px page`,
+);
+check(
+  "scrolling up says the screen is no longer live",
+  scrolledUp.chipShown === true && /back/i.test(scrolledUp.chipText ?? ""),
+  scrolledUp.chipShown ? scrolledUp.chipText : "chip hidden",
+);
+
+// Back is the unconditional escape hatch: one press returns to the present,
+// however far up the transcript the remote has wandered.
+await press(cdp, "Escape");
+await sleep(400);
+const jumped = await evaluate(
+  cdp,
+  `JSON.stringify((() => {
+  const f = document.querySelector('#feed');
+  const chip = document.querySelector('#feed-jump');
+  return {
+    atBottom: f.scrollHeight - f.scrollTop - f.clientHeight < 60,
+    chipShown: chip ? !chip.hidden : false,
+    focused: document.querySelector('.focused')?.id ?? null,
+  };
+})())`,
+).then(JSON.parse);
+check("Back jumps to the latest activity", jumped.atBottom === true && jumped.chipShown === false);
+check("Back leaves the remote on the feed", jumped.focused === "feed", jumped.focused ?? "none");
+
+// ...and from there the controls are one press away, however long the
+// conversation is. Two presses total, from anywhere.
+await press(cdp, "ArrowDown");
+await sleep(250);
+const escaped = await evaluate(cdp, `document.querySelector('.focused')?.id ?? null`);
+check("the prompt bar is one press further down", escaped === "prompt", escaped ?? "none");
+
 // --- screenshot ----------------------------------------------------------
 // --- a session reset must not leave an overlay holding focus --------------
 // The reported bug: switch agents while a permission modal is up and the modal
@@ -480,6 +603,7 @@ for (let i = 0; i < 40; i += 1) {
     modal: !!document.querySelector('#permission-modal'),
     picker: !!document.querySelector('#agent-picker'),
     items: document.querySelectorAll('#feed .msg, #feed .tool').length,
+    mark: document.querySelector('#feed .session-mark .title')?.textContent?.trim() ?? null,
     focused: document.querySelector('.focused')?.id ?? null,
     status: document.querySelector('#status')?.textContent,
   })`,
@@ -489,6 +613,13 @@ for (let i = 0; i < 40; i += 1) {
 check("a session reset removes a stale permission modal", reset?.modal === false);
 check("a session reset closes the agent picker", reset?.picker === false);
 check("a session reset clears the transcript", reset?.items === 0, `${reset?.items} items left`);
+// An emptied screen on its own reads as a crash. The marker says which agent
+// the new session belongs to and that the old one ended on purpose.
+check(
+  "the new session is announced in the feed",
+  /restart|new session/i.test(reset?.mark ?? ""),
+  reset?.mark ?? "no marker",
+);
 check(
   "focus returns to a real control after the reset",
   !!reset?.focused,
