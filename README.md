@@ -151,6 +151,11 @@ Two Fire OS behaviours worth knowing as a user:
 - While the on-screen keyboard is up, **Back is how you send a prompt**. Fire OS
   commits the text when the keyboard closes. There is also a Send button.
 
+If the bridge is not running when the app starts — or it goes away while the TV
+is on — the shell says so, counts down, and keeps retrying by itself until the
+page loads. Reopening a laptop lid in another room is enough; nothing needs
+pressing on the TV.
+
 **MENU** is two buttons in one: a short press opens the agent picker, a long
 press opens the shell's own settings form. The shell swallows the key either way
 so Fire OS cannot pop its own menu over the app, and hands the short press to

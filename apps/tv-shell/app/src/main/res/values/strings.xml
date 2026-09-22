@@ -10,7 +10,8 @@
     <string name="setup_hint">Press and hold MENU at any time to change these.</string>
     <string name="error_host_required">Enter the address shown in your terminal.</string>
     <string name="error_code_required">Enter the 6-digit pair code.</string>
-    <string name="error_load_failed">Could not reach %1$s.\n\nCheck the bridge is running and that this TV is on the same network.</string>
-    <string name="retry">Retry</string>
+    <string name="error_load_failed">Could not reach %1$s.\n\nCheck the bridge is running and that this TV is on the same network.\n\nTrying again in %2$d s…</string>
+    <string name="error_load_retrying">Reconnecting to %1$s…</string>
+    <string name="retry">Try now</string>
     <string name="change_settings">Change address</string>
 </resources>
