@@ -137,6 +137,25 @@ Two more form quirks, both fixed in the manifest and layout:
   field being edited. `android:imeOptions="...|flagNoExtractUi"` keeps the form
   visible.
 
+## MENU has to be forwarded by hand
+
+The shell intercepts `KEYCODE_MENU` in `dispatchKeyEvent` and returns `true` for
+it unconditionally, because letting it through pops Fire OS's own menu over the
+app. That is right, but it means **the page never sees MENU as a `keydown`**:
+the focus manager's menu handler fires in a desktop browser and never on a
+television, so the agent picker looked reachable in every browser test and was
+unreachable on the device.
+
+Short press is therefore forwarded explicitly on `ACTION_UP`, through a
+`window.couchmodeMenu()` hook, the same shape as the existing
+`window.couchmodeBack()`. Doing it on UP rather than DOWN is what keeps it apart
+from the long press: by then a long press has already opened the setup form and
+set a flag, so the picker does not also open behind it.
+
+The lesson generalises — any key the shell swallows needs a hook, and a browser
+test cannot tell you which keys those are. `apps/tv-shell/scripts/ftv-check.sh`
+covers MENU and BACK with real `input keyevent`s for exactly this reason.
+
 ## Debugging on the device
 
 The shell enables WebView debugging in debug builds only, which makes the page

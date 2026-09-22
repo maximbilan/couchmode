@@ -181,6 +181,40 @@ header {
   margin-left: 0;
 }
 
+.agent-pill:disabled {
+  opacity: 0.5;
+}
+
+/* Offline, the agent status we last heard describes the past. */
+.pill[data-stale="true"] {
+  opacity: 0.45;
+  filter: saturate(0.4);
+}
+
+/* The link, in words. "Connected" and "Disconnected · retrying in 4s" are the
+   two things a phone in another room actually needs to tell you. */
+.link-pill {
+  margin-left: 0;
+}
+
+.link-pill[data-link="paired"] {
+  color: var(--ok);
+  border-color: color-mix(in srgb, var(--ok) 45%, transparent);
+}
+
+.link-pill[data-link="connecting"],
+.link-pill[data-link="reconnecting"],
+.link-pill[data-link="pairing"] {
+  color: var(--accent);
+  border-color: color-mix(in srgb, var(--accent) 45%, transparent);
+}
+
+.link-pill[data-link="offline"],
+.link-pill[data-link="rejected"] {
+  color: var(--warn);
+  border-color: color-mix(in srgb, var(--warn) 55%, transparent);
+}
+
 main {
   flex: 1;
   overflow-y: auto;
@@ -418,17 +452,86 @@ textarea:focus {
   opacity: 0.45;
 }
 
+/* One banner, four meanings, told apart by colour as well as by reading it. */
 .banner {
   padding: 10px 14px;
   font-size: 14px;
-  background: color-mix(in srgb, var(--danger) 22%, var(--panel));
-  border-bottom: 1px solid color-mix(in srgb, var(--danger) 45%, transparent);
+  background: var(--panel-2);
+  border-bottom: 1px solid var(--line);
   white-space: pre-wrap;
+}
+
+.banner.bad {
+  background: color-mix(in srgb, var(--danger) 22%, var(--panel));
+  border-bottom-color: color-mix(in srgb, var(--danger) 45%, transparent);
 }
 
 .banner.offline {
   background: color-mix(in srgb, var(--warn) 20%, var(--panel));
   border-bottom-color: color-mix(in srgb, var(--warn) 45%, transparent);
+}
+
+.banner.good {
+  background: color-mix(in srgb, var(--ok) 18%, var(--panel));
+  border-bottom-color: color-mix(in srgb, var(--ok) 45%, transparent);
+}
+
+.banner.info {
+  background: color-mix(in srgb, var(--accent) 18%, var(--panel));
+  border-bottom-color: color-mix(in srgb, var(--accent) 45%, transparent);
+}
+
+/* Where one ACP session ends and the next begins: a cleared transcript on its
+   own looks like a crash. */
+.session-mark {
+  padding: 12px 14px;
+  border: 1px dashed color-mix(in srgb, var(--accent) 45%, transparent);
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--accent) 10%, var(--panel));
+}
+
+.session-mark .mark-title {
+  font-weight: 600;
+  font-size: 15px;
+  color: var(--accent);
+}
+
+.session-mark .mark-detail {
+  margin-top: 2px;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.option.agent-option {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  text-align: left;
+}
+
+.agent-option .agent-name {
+  font-weight: 600;
+}
+
+/* What the bridge will actually spawn - four titles that all say "CLI" are not
+   a choice; the command is. */
+.agent-option .agent-command {
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  font-size: 11px;
+  font-weight: 400;
+  opacity: 0.75;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sheet-state {
+  margin-top: 10px;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--accent);
 }
 
 .empty {

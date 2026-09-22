@@ -42,6 +42,9 @@ class MainActivity : Activity() {
     private var settings = BridgeSettings("", "")
     private var showingSetup = false
 
+    /** Set when MENU opened setup, so the matching ACTION_UP is not a short press. */
+    private var menuWasLongPress = false
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
@@ -188,8 +191,9 @@ class MainActivity : Activity() {
     // ----------------------------------------------------------------- keys
 
     /**
-     * MENU opens the setup form on long press, so the address can be changed
-     * without clearing app data.
+     * MENU is two buttons in one: long press opens the setup form, so the
+     * address can be changed without clearing app data, and short press is the
+     * page's agent picker.
      *
      * Handled in dispatchKeyEvent rather than onKeyDown: the WebView has focus
      * and consumes MENU before the activity's onKeyDown fallback ever runs.
@@ -198,18 +202,37 @@ class MainActivity : Activity() {
      * Long press is detected from the event itself. A held remote key sets
      * FLAG_LONG_PRESS on a repeat, and `input keyevent --longpress` sets it on
      * a single event, so counting repeats by hand never fires for either.
+     *
+     * The short press is forwarded on ACTION_UP the same way Back is, via a
+     * hook the page owns. Doing it on UP is what keeps the two apart: by then
+     * a long press has already opened setup and set `menuWasLongPress`, so the
+     * picker does not also appear behind the form.
      */
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
         if (event.keyCode == KeyEvent.KEYCODE_MENU) {
-            if (event.action == KeyEvent.ACTION_DOWN) {
-                val heldLongEnough = event.eventTime - event.downTime >= MENU_LONG_PRESS_MS
-                if (event.isLongPress || heldLongEnough) {
-                    Log.i(TAG, "MENU long press: reopening setup")
-                    showSetup()
+            when (event.action) {
+                KeyEvent.ACTION_DOWN -> {
+                    val heldLongEnough = event.eventTime - event.downTime >= MENU_LONG_PRESS_MS
+                    if (event.isLongPress || heldLongEnough) {
+                        Log.i(TAG, "MENU long press: reopening setup")
+                        menuWasLongPress = true
+                        showSetup()
+                    }
+                }
+                KeyEvent.ACTION_UP -> {
+                    val wasLong = menuWasLongPress
+                    menuWasLongPress = false
+                    if (!wasLong && !showingSetup && ::webView.isInitialized) {
+                        Log.i(TAG, "MENU short press: handing to the page")
+                        webView.evaluateJavascript(
+                            "(function(){ try { return !!(window.couchmodeMenu &&" +
+                                " window.couchmodeMenu()); } catch (e) { return false; } })()",
+                        ) { result -> Log.i(TAG, "MENU: page handled = $result") }
+                    }
                 }
             }
-            // Swallow MENU either way: a short press has nothing to do, and
-            // letting it through pops Fire OS's own menu over the app.
+            // Swallow MENU either way: letting it through pops Fire OS's own
+            // menu over the app.
             return true
         }
         return super.dispatchKeyEvent(event)

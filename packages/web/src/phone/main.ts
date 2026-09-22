@@ -5,14 +5,15 @@
  * requests. Permission options are rendered from the agent's own `options[]`;
  * Couchmode never invents an option the agent did not offer.
  */
-import { CouchmodeClient } from "../shared/client.js";
-import type { ConnectionState } from "../shared/client.js";
+import { connectionLabel, CouchmodeClient } from "../shared/client.js";
+import type { ConnectionStatus } from "../shared/client.js";
 import type {
   AgentStatus,
   HelloMessage,
   PermissionOption,
   RequestPermissionRequest,
   ServerMessage,
+  SessionResetMessage,
 } from "../shared/protocol.js";
 import { escapeHtml, renderMarkdown, toolKindIcon, TranscriptModel } from "../shared/render.js";
 import type { TranscriptItem } from "../shared/render.js";
@@ -35,6 +36,43 @@ let hello: HelloMessage | null = null;
 let status: AgentStatus = "starting";
 let statusDetail = "";
 const pending = new Map<string, RequestPermissionRequest>();
+
+/** The agent a requested switch is starting, until its session is running. */
+let switching: { name: string; title: string } | null = null;
+
+/** A short-lived line in the banner: "Reconnected", "Claude is running". */
+let notice: { text: string; tone: "good" | "info" } | null = null;
+let noticeTimer: number | null = null;
+
+function flashNotice(text: string, tone: "good" | "info" = "info", ms = 4_000): void {
+  notice = { text, tone };
+  if (noticeTimer !== null) window.clearTimeout(noticeTimer);
+  noticeTimer = window.setTimeout(() => {
+    notice = null;
+    noticeTimer = null;
+    paintHeader();
+  }, ms);
+  paintHeader();
+}
+
+/**
+ * Repaint the "retrying in 4s" countdown.
+ *
+ * While the link is down nothing arrives to trigger a repaint, so the only
+ * alternative to a timer is a banner that says "disconnected" and then sits
+ * there looking identical whether or not anything is being attempted.
+ */
+let countdownTimer: number | null = null;
+
+function syncCountdown(): void {
+  const needed = client.connectionStatus.state === "offline";
+  if (needed && countdownTimer === null) {
+    countdownTimer = window.setInterval(paintHeader, 1_000);
+  } else if (!needed && countdownTimer !== null) {
+    window.clearInterval(countdownTimer);
+    countdownTimer = null;
+  }
+}
 
 // --- pairing screen ---------------------------------------------------------
 
@@ -151,6 +189,7 @@ function showMain(): void {
       </div>
       <button class="pill agent-pill" id="agent-switch" hidden>Agent</button>
       <div class="pill" id="status">Starting</div>
+      <div class="pill link-pill" id="link" data-link="connecting">Connecting…</div>
     </header>
     <div class="banner" id="banner" hidden></div>
     <main id="feed"><div class="empty">Ask the agent something to get started.</div></main>
@@ -213,9 +252,15 @@ function paintHeader(): void {
   const project = app.querySelector<HTMLElement>("#project");
   const branch = app.querySelector<HTMLElement>("#branch");
   const pill = app.querySelector<HTMLElement>("#status");
+  const link = app.querySelector<HTMLElement>("#link");
+  const connection = client.connectionStatus;
+  const live = connection.state === "paired";
+
   if (project && hello) project.textContent = hello.projectName;
   if (branch && hello) {
-    const parts = [hello.agentTitle];
+    // While a switch is in flight, name the agent being started: the corrected
+    // `hello` is seconds away and until then this would show the old one.
+    const parts = [switching ? `${switching.title} · starting…` : hello.agentTitle];
     if (hello.gitBranch) parts.unshift(hello.gitBranch);
     if (hello.fake) parts.push("fake");
     branch.textContent = parts.join(" · ");
@@ -223,20 +268,48 @@ function paintHeader(): void {
   if (pill) {
     pill.textContent = STATUS_LABEL[status];
     pill.dataset.status = status;
+    // Offline, the last status we heard is a claim about the past.
+    pill.dataset.stale = String(!live);
   }
+  if (link) {
+    link.textContent = connectionLabel(connection);
+    link.dataset.link = connection.state;
+  }
+
   const agentSwitch = app.querySelector<HTMLButtonElement>("#agent-switch");
   if (agentSwitch && hello) {
     // Only worth offering when there is something to switch to.
     agentSwitch.hidden = hello.agents.length < 2 || hello.fake;
-    agentSwitch.textContent = hello.agentTitle;
+    agentSwitch.textContent = switching ? `${switching.title}…` : hello.agentTitle;
+    agentSwitch.disabled = Boolean(switching) || !live;
   }
+
+  const send = app.querySelector<HTMLButtonElement>("#send");
+  // A prompt sent while the socket is down goes nowhere. Say so on the button
+  // rather than swallowing it.
+  if (send) send.disabled = !live;
+
   if (bannerEl) {
-    const offline = client.connectionState === "offline" || client.connectionState === "connecting";
-    const text = offline ? "Reconnecting to the bridge…" : statusDetail;
+    let text = "";
+    let tone = "";
+    if (!live && connection.state !== "idle") {
+      text = connection.everPaired
+        ? `Lost the bridge — ${connectionLabel(connection).replace(/^[^·]*· /, "")}${connection.attempt > 1 ? ` (attempt ${connection.attempt})` : ""}. The agent keeps working; this screen is from before the drop.`
+        : `${connectionLabel(connection)} — check the bridge is still running.`;
+      tone = "offline";
+    } else if (notice) {
+      text = notice.text;
+      tone = notice.tone;
+    } else {
+      text = statusDetail;
+      tone = statusDetail ? "bad" : "";
+    }
     bannerEl.hidden = text.length === 0;
     bannerEl.textContent = text;
-    bannerEl.classList.toggle("offline", offline);
+    bannerEl.className = `banner${tone ? ` ${tone}` : ""}`;
   }
+
+  syncCountdown();
 }
 
 /**
@@ -300,34 +373,122 @@ function toggleAgentPicker(): void {
   sheet.id = "agent-sheet";
   sheet.innerHTML = `
     <div class="summary">Run a different agent</div>
-    <div class="detail">Switching starts a new session and clears this transcript.</div>
+    <div class="detail">Switching starts a new session with that agent. This one ends — a session belongs to the agent that created it — so this transcript and any pending approvals are cleared.</div>
     <div class="options"></div>
+    <div class="sheet-state" id="sheet-state" hidden></div>
   `;
   const options = sheet.querySelector<HTMLElement>(".options")!;
   for (const agent of agents) {
     const button = document.createElement("button");
-    button.className = "option";
+    button.className = "option agent-option";
     button.dataset.kind = agent.active ? "allow_once" : "";
-    button.textContent = agent.active ? `${agent.title} · restart` : agent.title;
+    button.innerHTML = `
+      <span class="agent-name">${escapeHtml(agent.active ? `${agent.title} · restart` : agent.title)}</span>
+      <span class="agent-command">${escapeHtml(agent.command)}</span>
+    `;
     button.addEventListener("click", () => {
       client.switchAgent(agent.name);
-      sheet.remove();
+      switching = { name: agent.name, title: agent.title };
+      // The sheet stays up in a starting state. Closing it on the click would
+      // leave several seconds where nothing on screen has changed yet.
+      options.querySelectorAll("button").forEach((b) => (b.disabled = true));
+      const state = sheet.querySelector<HTMLElement>("#sheet-state");
+      if (state) {
+        state.hidden = false;
+        state.textContent = agent.active
+          ? `Restarting ${agent.title}…`
+          : `Starting ${agent.title}…`;
+      }
+      paintHeader();
     });
     options.append(button);
   }
   permissionsEl?.prepend(sheet);
 }
 
+/** A rule across the feed marking where one session ends and the next begins. */
+function appendSessionMark(title: string, detail: string): void {
+  if (!feedEl) return;
+  feedEl.querySelector(".empty")?.remove();
+  const node = document.createElement("div");
+  node.className = "session-mark";
+  node.innerHTML = `<div class="mark-title">◆ ${escapeHtml(title)}</div><div class="mark-detail">${escapeHtml(detail)}</div>`;
+  feedEl.append(node);
+  feedEl.scrollTop = feedEl.scrollHeight;
+}
+
+/** Drop everything that belonged to the session that just ended. */
+function clearSessionState(): void {
+  transcript.clear();
+  pending.clear();
+  app.querySelector("#agent-sheet")?.remove();
+  if (feedEl) feedEl.innerHTML = "";
+  repaintPermissions();
+}
+
+function resetForNewSession(message: SessionResetMessage): void {
+  clearSessionState();
+  switching = { name: message.agentName, title: message.agentTitle };
+  statusDetail = "";
+  const switched = message.reason === "agent_switched";
+  appendSessionMark(
+    switched ? `New session · ${message.agentTitle}` : `${message.agentTitle} restarted`,
+    switched && message.previousTitle
+      ? `Switched from ${message.previousTitle}. The old session ended with it.`
+      : "Same agent, fresh session. Nothing from before carries over.",
+  );
+  paintHeader();
+}
+
+/** Whether the transcript being replaced by a replay had anything in it. */
+let hadTranscriptBeforeReplay = false;
+
+/**
+ * The bridge is about to replay its buffer, so rebuild rather than append.
+ *
+ * Reconnecting re-pairs, and pairing always replays the session so far. Without
+ * this, every reconnect leaves a second copy of the whole transcript and a
+ * duplicate card for each pending approval.
+ */
+function resyncFromReplay(): void {
+  hadTranscriptBeforeReplay = transcript.items.length > 0;
+  clearSessionState();
+}
+
+/**
+ * The replay is complete: settle the feed.
+ *
+ * The replay count includes `agent_status` messages, so a bridge that has only
+ * reported "ready" still replays messages that produce no transcript - keying
+ * the empty state off that count leaves a blank feed instead of the invitation
+ * to ask something.
+ */
+function settleAfterReplay(): void {
+  if (!feedEl) return;
+  if (transcript.items.length === 0) {
+    feedEl.innerHTML = `<div class="empty">Ask the agent something to get started.</div>`;
+  } else if (hadTranscriptBeforeReplay) {
+    appendSessionMark("Reconnected", "Caught up with everything the bridge buffered.");
+  }
+  hadTranscriptBeforeReplay = false;
+  feedEl.scrollTop = feedEl.scrollHeight;
+}
+
 // --- wiring -----------------------------------------------------------------
 
-client.on("state", (state: ConnectionState) => {
-  if (state === "rejected") {
+client.on("status", (connection: ConnectionStatus) => {
+  if (connection.state === "rejected") {
     showPairing("That code didn't match. Check your terminal and try again.");
     return;
   }
-  if (state === "paired" && !document.querySelector("#feed")) showMain();
-  paintHeader();
+  if (connection.state === "paired" && !document.querySelector("#feed")) showMain();
+  if (document.querySelector("#feed")) paintHeader();
+  syncCountdown();
 });
+
+/** Reconnecting re-pairs, and pairing replays: rebuild instead of appending. */
+client.on("replayStart", () => resyncFromReplay());
+client.on("replayEnd", () => settleAfterReplay());
 
 client.on("message", (message: ServerMessage) => {
   switch (message.type) {
@@ -335,22 +496,33 @@ client.on("message", (message: ServerMessage) => {
       hello = message;
       status = message.status;
       if (!document.querySelector("#feed")) showMain();
+      // The switch is done once the bridge names the new agent as the running
+      // one and it is past "starting".
+      if (switching && message.agentName === switching.name && message.status !== "starting") {
+        const title = message.agentInfo?.title ?? message.agentTitle;
+        const version = message.agentInfo?.version ? ` ${message.agentInfo.version}` : "";
+        switching = null;
+        app.querySelector("#agent-sheet")?.remove();
+        flashNotice(`${title}${version} is running — new session.`, "good");
+      }
       paintHeader();
       break;
     case "agent_status":
       status = message.status;
       statusDetail = message.detail ?? "";
+      if (switching && (message.status === "error" || message.status === "exited")) {
+        // A failed switch must not leave the sheet claiming to be starting.
+        const state = app.querySelector<HTMLElement>("#sheet-state");
+        if (state) state.textContent = message.detail || `${switching.title} failed to start.`;
+        switching = null;
+      }
       paintHeader();
       break;
     case "acp":
       transcript.apply(message.payload.update);
       break;
     case "session_reset":
-      transcript.clear();
-      pending.clear();
-      app.querySelector("#agent-sheet")?.remove();
-      if (feedEl) feedEl.innerHTML = `<div class="empty">Starting a new session…</div>`;
-      repaintPermissions();
+      resetForNewSession(message);
       break;
     case "permission_request":
       pending.set(message.requestId, message.request);

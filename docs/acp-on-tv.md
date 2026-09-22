@@ -215,6 +215,21 @@ Panels are scrollers: up/down pan their content and only release the key back to
 the focus manager once the edge is reached, so focus leaves a panel exactly when
 there is nothing left to scroll.
 
+That rule alone does not survive a long conversation. An hour of transcript is
+many screens tall, so "leave the panel" costs a press per screen, and while the
+agent is streaming the bottom moves away faster than a fixed step can chase it —
+the prompt bar becomes unreachable in proportion to how much the agent has done.
+Three things bound it:
+
+- a press moves ~85% of the visible height, not a fixed 220px;
+- consecutive presses accelerate, so a held button covers a long feed in a
+  second — which is also why the pan is instant rather than smooth: a remote
+  repeats the key every few dozen milliseconds and queued animations would lag
+  behind the viewer;
+- **Back returns to the present** whatever is on screen, re-pinning the feed to
+  the newest item. The prompt bar is then one press down: two presses from
+  anywhere, independent of length.
+
 Left and right stay within a row. Without that rule, pressing right from the
 activity feed with no diff panel beside it jumped up to the agent name in the
 top bar — the only focusable thing further right on the screen. Horizontal moves
@@ -238,7 +253,14 @@ waiting for an answer.
   strike-through.
 
 The feed auto-scrolls, unless the viewer has deliberately scrolled up to read,
-in which case it stops until they return to the bottom.
+in which case it stops until they return to the bottom. A chip in the corner
+says so and counts what has arrived since, because a feed that has quietly
+stopped being live looks exactly like one where nothing is happening.
+
+Unpinning happens on the key press, not on the scroll event it produces. A pan
+that waits to be told it moved can be dragged back to the bottom by an item
+arriving mid-scroll — the viewer presses up and the transcript yanks them down
+again.
 
 ### The status pill
 
@@ -289,6 +311,36 @@ it:
   the remote sat behind a dialog describing a session that had ended and no
   later request could ever be shown. `session_reset` now removes the modal and
   the picker, clears the pending queue, and returns focus to the base layer.
+- **A switch has to narrate itself.** Clearing the screen and waiting several
+  seconds for a process to spawn is indistinguishable from a crash. The reset
+  carries the incoming agent's name — the corrected `hello` only arrives once
+  the new agent is up — so the top bar can show it starting, a rule across the
+  feed can say which agent the new session belongs to and what it replaced, and
+  a banner can confirm when it is ready to take a prompt.
+
+## Reconnecting
+
+A client that drops is a client that must come back without lying about what it
+missed. Three parts:
+
+- **Noticing.** A closed socket fires `close`; a socket that has merely gone
+  quiet does not. A sleeping TV or an access point handing the client to another
+  radio leaves a connection the browser still calls open and the bridge never
+  hears from again, so the client sends `{"type":"ping"}` every 15 seconds and
+  drops the socket itself when a whole cycle plus grace passes with nothing
+  heard. Without it the screen sits on a frozen transcript indefinitely.
+- **Saying so.** The top bar states the link in words and counts down to the
+  next attempt, and the agent's status is dimmed while the link is down —
+  "Thinking" is a claim about the past once we cannot hear the bridge.
+- **Rebuilding, not appending.** Pairing always replays the session so far, and
+  a reconnect re-pairs, so a client that keeps its transcript ends up with two
+  copies of every message and a duplicate modal for every pending approval. The
+  hub now brackets the replay with `replay_start` / `replay_end`; clients clear
+  on the first and settle on the second, rebuilding from the buffer each time.
+
+`replay_end` is where the empty state is decided, not `replay_start`: the count
+includes `agent_status` messages, so a bridge that has only said "ready" replays
+a non-zero number of messages that produce no transcript at all.
 
 ## Handshake timeouts
 

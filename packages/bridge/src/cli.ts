@@ -279,6 +279,7 @@ async function main(): Promise<void> {
     agents: registry.list().map((entry) => ({
       name: entry.name,
       title: entry.title ?? entry.name,
+      command: [entry.command, ...entry.args].join(" "),
       active: entry.name === current.name,
     })),
     status: acp?.currentStatus ?? "starting",
@@ -382,11 +383,19 @@ async function main(): Promise<void> {
         ? `restarting agent: ${target.name}`
         : `switching agent: ${current.name} -> ${target.name}`,
     );
-    // Everything on screen belongs to a session that is about to end.
+    // Everything on screen belongs to a session that is about to end. Name the
+    // incoming agent in the reset itself: the corrected `hello` only arrives
+    // once the new agent has finished starting, which can take seconds, and
+    // until then the clients would be captioning the new session with the old
+    // agent's name.
+    const previousTitle = current.title ?? current.name;
     hub.clearHistory();
     hub.broadcast({
       type: "session_reset",
       reason: restarting ? "agent_restarted" : "agent_switched",
+      agentName: target.name,
+      agentTitle: target.title ?? target.name,
+      previousTitle: restarting ? null : previousTitle,
     });
     hub.broadcast({ type: "agent_status", status: "starting" });
     await startAgent(target);
