@@ -196,12 +196,17 @@ overridable at `~/.couchmode/agents.json`.
 | Agent  | Command                                        | Status                                |
 | ------ | ---------------------------------------------- | ------------------------------------- |
 | Claude | `npx -y @agentclientprotocol/claude-agent-acp` | ✅ tested — recorded fixture included |
+| Kiro   | `kiro-cli acp`                                 | ✅ tested on Kiro CLI 2.21.4          |
 | Codex  | `npx -y @agentclientprotocol/codex-acp`        | ⚪ untested                           |
-| Gemini | `gemini --experimental-acp`                    | ⚪ untested                           |
-| Kiro   | `kiro-cli acp`                                 | ⚪ untested                           |
+| Gemini | `gemini --acp --skip-trust`                    | ⚪ untested                           |
 
-Codex, Gemini and Kiro are configured but have not been run yet; they are
-verified in M4.
+Codex and Gemini are configured but have not been run yet.
+
+Claude on Amazon Bedrock or Google Vertex AI needs nothing from Couchmode:
+configure it in Claude Code — `CLAUDE_CODE_USE_BEDROCK=1` (or
+`CLAUDE_CODE_USE_VERTEX=1`) in your environment or in the `env` block of
+`~/.claude/settings.json` — and `--agent claude` inherits it. If an agent sits on "Thinking" forever, check that its cloud credentials
+have not expired; see [`docs/upstream-issues.md`](docs/upstream-issues.md).
 
 ## Authentication
 

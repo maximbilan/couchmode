@@ -16,7 +16,9 @@
     "'preferredModes' is a priority list of ACP session mode ids. Approving tool calls",
     "from the couch is the whole point of Couchmode, so on startup it switches the",
     "session to the first of these the agent actually offers - agents that default to",
-    "deciding permissions themselves would otherwise never ask. Override with --mode."
+    "deciding permissions themselves would otherwise never ask. Override with --mode.",
+    "Kiro names its modes with a 'kiro_' prefix rather than reusing the conventional",
+    "'default'; kiro_default is the one that asks, so it is listed explicitly."
   ],
   "agents": {
     "claude": {
@@ -51,7 +53,7 @@
       "command": "kiro-cli",
       "args": ["acp"],
       "env": {},
-      "preferredModes": ["default", "ask"],
+      "preferredModes": ["kiro_default"],
       "loginHint": "kiro-cli login",
       "docs": "https://kiro.dev/docs/cli/acp/"
     }
