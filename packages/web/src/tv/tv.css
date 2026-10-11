@@ -876,7 +876,9 @@ body {
 
 .modal .resolved {
   padding: 30px 36px;
-  font-size: 30px;
+  font-size: 36px;
+  font-weight: 700;
+  text-align: center;
   color: var(--ok);
 }
 
@@ -930,4 +932,343 @@ body {
   padding: 2px 10px;
   font-family: inherit;
   font-size: 20px;
+}
+
+/* ---------------------------------------------------------------- motion */
+
+/*
+ * Motion that says what just happened: something arrived, finished, or needs
+ * an answer. Two rules, both for the Fire TV Stick and its remote:
+ *
+ * - Only `transform` and `opacity` animate, and `transform` means moving,
+ *   not scaling. Both run on the compositor; a shadow, a blur or anything
+ *   that moves layout stutters on the device, and scaling a large element
+ *   makes it re-rasterise. Measured on a Fire TV Stick, not guessed - see
+ *   the notes on the permission modal below.
+ * - Nothing waits for an animation. Keys keep working mid-flight, and every
+ *   one-shot motion is over in about half a second.
+ *
+ * One-shot motions are keyed on `data-motion`, set from main.ts, which skips
+ * them entirely while the bridge replays its buffer after a reconnect.
+ */
+
+:root {
+  --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+  /* Overshoots slightly, then settles: things that land rather than slide. */
+  --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+}
+
+@keyframes rise-in {
+  from {
+    opacity: 0;
+    transform: translateY(28px);
+  }
+}
+
+@keyframes drop-in {
+  from {
+    opacity: 0;
+    transform: translateY(-28px);
+  }
+}
+
+/* Pairing: the title, then the six boxes one after another. */
+.pairing[data-motion="enter"] > * {
+  animation: rise-in 520ms var(--ease-out) both;
+}
+.pairing[data-motion="enter"] .tagline {
+  animation-delay: 80ms;
+}
+.pairing[data-motion="enter"] .code-boxes {
+  animation: none;
+}
+.pairing[data-motion="enter"] .digit {
+  animation: rise-in 480ms var(--ease-spring) both;
+  animation-delay: calc(160ms + var(--i, 0) * 50ms);
+}
+.pairing[data-motion="enter"] .hint {
+  animation-delay: 480ms;
+}
+
+/* A digit rolls in from the direction it came from. */
+.digit .value[data-motion="up"] {
+  animation: roll-up 160ms var(--ease-out);
+}
+.digit .value[data-motion="down"] {
+  animation: roll-down 160ms var(--ease-out);
+}
+
+@keyframes roll-up {
+  from {
+    opacity: 0.2;
+    transform: translateY(40%);
+  }
+}
+
+@keyframes roll-down {
+  from {
+    opacity: 0.2;
+    transform: translateY(-40%);
+  }
+}
+
+/* A wrong code shakes its head. */
+.pairing[data-motion="reject"] .code-boxes {
+  animation: shake 440ms ease-in-out;
+}
+.pairing[data-motion="reject"] .error {
+  animation: rise-in 300ms var(--ease-out) both;
+}
+
+@keyframes shake {
+  15%,
+  55% {
+    transform: translateX(-18px);
+  }
+  35%,
+  75% {
+    transform: translateX(18px);
+  }
+  90% {
+    transform: translateX(-6px);
+  }
+}
+
+/* Paired: the main screen assembles - top bar from above, the rest from below.
+   #app's own fade is the longest part, so its end marks the whole entrance. */
+#app[data-motion="main"] {
+  animation: main-in 700ms linear both;
+}
+#app[data-motion="main"] .topbar {
+  animation: drop-in 460ms var(--ease-out) both;
+}
+#app[data-motion="main"] .stage {
+  animation: rise-in 520ms var(--ease-out) 90ms both;
+}
+#app[data-motion="main"] .promptbar {
+  animation: rise-in 480ms var(--ease-out) 160ms both;
+}
+#app[data-motion="main"] .hintbar {
+  animation: fade-in 400ms ease-out 240ms both;
+}
+
+@keyframes main-in {
+  from {
+    opacity: 0;
+  }
+  25% {
+    opacity: 1;
+  }
+}
+
+/* The agent is doing something: the status pill breathes. */
+.status-pill[data-status="starting"]::before,
+.status-pill[data-status="prompting"]::before,
+.status-pill[data-status="waiting_permission"]::before {
+  content: "";
+  display: inline-block;
+  width: 12px;
+  height: 12px;
+  margin-right: 12px;
+  border-radius: 50%;
+  background: currentColor;
+  vertical-align: 0.12em;
+  animation: breathe 1.2s ease-in-out infinite;
+}
+.status-pill[data-stale="true"]::before {
+  animation: none;
+}
+
+@keyframes breathe {
+  50% {
+    opacity: 0.4;
+    transform: scale(0.55);
+  }
+}
+
+.banner {
+  animation: fade-in 260ms ease-out;
+}
+
+.jump-chip {
+  animation: chip-in 280ms var(--ease-spring);
+}
+
+@keyframes chip-in {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+}
+
+/* Activity: each new row slides up into place. */
+.feed > [data-motion="enter"] {
+  animation: rise-in 380ms var(--ease-out) both;
+}
+
+/* A running tool has light sweeping across it; a finished one flashes its
+   outcome once. Both are pseudo-elements so they survive the row's contents
+   being rewritten on every update. No scale on the flash: on the Fire TV even
+   a 1.5% pop re-rasterises the row and drops a frame every time. */
+.tool {
+  position: relative;
+  overflow: hidden;
+}
+
+.tool::before,
+.tool::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0;
+}
+
+.tool::before {
+  background: linear-gradient(
+    100deg,
+    transparent 30%,
+    color-mix(in srgb, var(--accent) 16%, transparent) 50%,
+    transparent 70%
+  );
+}
+.tool[data-status="in_progress"]::before {
+  opacity: 1;
+  animation: sweep 1.6s ease-in-out infinite;
+}
+
+@keyframes sweep {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(100%);
+  }
+}
+
+.tool::after {
+  background: var(--ok);
+}
+.tool[data-status="failed"]::after {
+  background: var(--danger);
+}
+.tool[data-motion="settle"]::after {
+  animation: settle-flash 520ms ease-out;
+}
+
+@keyframes settle-flash {
+  25% {
+    opacity: 0.22;
+  }
+}
+
+/* Changes: the panel slides in from the right, then the diff rises into it. */
+#diff-panel[data-motion="enter"] {
+  animation: slide-in 460ms var(--ease-out) both;
+}
+
+@keyframes slide-in {
+  from {
+    opacity: 0;
+    transform: translateX(60px);
+  }
+}
+
+/* The diff moves as one block. Cascading it line by line looked better on a
+   laptop and cost the TV a layer per line, at the exact moment the permission
+   modal is also arriving. */
+.diff[data-motion="enter"] {
+  animation: rise-in 360ms var(--ease-out) 120ms both;
+}
+
+/* Overlays rise in over a fading scrim. Translation only: scaling a layer
+   this size makes the TV re-rasterise it while it moves. */
+.scrim[data-motion="enter"] {
+  animation: fade-in 220ms ease-out both;
+}
+.scrim[data-motion="enter"] .modal {
+  animation: modal-in 380ms var(--ease-spring) both;
+}
+
+@keyframes modal-in {
+  from {
+    opacity: 0;
+    transform: translateY(48px);
+  }
+}
+
+/* A permission request keeps a dot breathing beside its kicker until it is
+   answered: the same "something is live" signal as the status pill.
+
+   Not a glow around the modal. Measured on the Fire TV, a ring that size -
+   even a crisp one, without blur - held the first request at 30fps for a
+   second, because it lands just as the Changes panel appears and the whole
+   stage is being re-rasterised. The dot costs nothing. */
+#permission-modal .kicker::before {
+  content: "";
+  display: inline-block;
+  width: 14px;
+  height: 14px;
+  margin-right: 14px;
+  border-radius: 50%;
+  background: currentColor;
+  vertical-align: 0.08em;
+  animation: breathe 1.2s ease-in-out infinite;
+}
+
+/* Answered: the outcome is stamped in its colour, held long enough to read,
+   then the modal folds away - all inside the 900ms main.ts waits before
+   removing it, so the last frame holds rather than flashing back. */
+.modal[data-outcome="allow"] {
+  border-color: var(--ok);
+}
+.modal[data-outcome="reject"] {
+  border-color: var(--danger);
+}
+.modal[data-outcome="reject"] .resolved {
+  color: var(--danger);
+}
+
+#permission-modal[data-motion="resolve"] {
+  animation: fade-out 280ms ease-in 620ms both;
+}
+#permission-modal[data-motion="resolve"] .modal {
+  animation: modal-out 280ms ease-in 620ms both;
+}
+#permission-modal[data-motion="resolve"] .resolved {
+  animation: stamp 340ms var(--ease-spring) both;
+}
+
+@keyframes fade-out {
+  to {
+    opacity: 0;
+  }
+}
+
+@keyframes modal-out {
+  to {
+    opacity: 0;
+    transform: translateY(36px);
+  }
+}
+
+@keyframes stamp {
+  from {
+    opacity: 0;
+    transform: translateY(18px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation: none !important;
+  }
 }
