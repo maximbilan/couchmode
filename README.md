@@ -202,11 +202,22 @@ overridable at `~/.couchmode/agents.json`.
 
 Codex and Gemini are configured but have not been run yet.
 
-Claude on Amazon Bedrock or Google Vertex AI needs nothing from Couchmode:
-configure it in Claude Code — `CLAUDE_CODE_USE_BEDROCK=1` (or
-`CLAUDE_CODE_USE_VERTEX=1`) in your environment or in the `env` block of
-`~/.claude/settings.json` — and `--agent claude` inherits it. If an agent sits on "Thinking" forever, check that its cloud credentials
-have not expired; see [`docs/upstream-issues.md`](docs/upstream-issues.md).
+Running an agent on Amazon Bedrock needs nothing from Couchmode: configure it in
+the agent itself, and the agent Couchmode spawns inherits it.
+
+- **Claude Code** — `CLAUDE_CODE_USE_BEDROCK=1` (or `CLAUDE_CODE_USE_VERTEX=1`
+  for Google Vertex AI) in your environment or in the `env` block of
+  `~/.claude/settings.json`.
+- **Codex** — `model_provider = "amazon-bedrock"` in `~/.codex/config.toml`
+  ([setup](https://learn.chatgpt.com/docs/config-file/config-advanced#amazon-bedrock-provider)).
+  This runs OpenAI's models on Bedrock, not Claude, and has not been run
+  through Couchmode yet.
+
+Kiro can be billed to an AWS account, but it is a Kiro subscription rather than
+your own Bedrock access. Gemini CLI has no Bedrock provider.
+
+If an agent sits on "Thinking" forever, check that its cloud credentials have
+not expired; see [`docs/upstream-issues.md`](docs/upstream-issues.md).
 
 ## Authentication
 
