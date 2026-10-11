@@ -48,6 +48,8 @@ async function readAgentsFile(path: string): Promise<Record<string, unknown> | n
 export interface AgentRegistry {
   list(): AgentDefinition[];
   get(name: string): AgentDefinition | undefined;
+  /** Whether `~/.couchmode/agents.json` existed and contributed entries. */
+  readonly userOverride: boolean;
 }
 
 export async function loadAgents(): Promise<AgentRegistry> {
@@ -64,5 +66,6 @@ export async function loadAgents(): Promise<AgentRegistry> {
   return {
     list: () => [...entries.values()],
     get: (name) => entries.get(name),
+    userOverride: user !== null,
   };
 }
