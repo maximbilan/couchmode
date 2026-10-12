@@ -178,6 +178,39 @@ The lesson generalises — any key the shell swallows needs a hook, and a browse
 test cannot tell you which keys those are. `apps/tv-shell/scripts/ftv-check.sh`
 covers MENU and BACK with real `input keyevent`s for exactly this reason.
 
+## Animation: move things, never scale them
+
+The `/tv` motion (entrances, the permission modal, the answer stamp) was tuned
+against frame timings recorded on the device: a `requestAnimationFrame` loop
+counting frames over 25ms, attributed to whichever animation had just started,
+across the whole `--fake` session driven with real `input keyevent`s.
+
+Three things a laptop never showed:
+
+- **Scaling costs a re-raster.** A 1.5% "pop" on a feed row dropped a frame
+  nearly every time it played. Scaling the 1500px permission modal, or the
+  answer line inside it, did the same at the moment that matters most. Every
+  motion is now a translation plus opacity, and press feedback is a 4px nudge
+  rather than a shrink.
+- **A glow is not free just because only its opacity animates.** A blurred
+  90px shadow around the modal, and then even a crisp ring with no blur, held
+  the first permission request at 30fps for a second.
+- **The worst moment is the one where everything arrives at once.** An edit's
+  diff and its permission request land together, so the Changes panel appears
+  and re-lays out the stage in the same frame as the modal starts to rise. A
+  cascade of 30 diff lines meant 30 layers on top of that. The diff now moves as
+  one block, and the panel's entrance is finished instantly when the modal
+  opens, since the scrim is about to cover it anyway.
+
+Net effect, same session, same device: dropped frames at the first permission
+request went from 8-9 to 3-4, and the worst frame from 100ms to 50ms. `main`
+before any motion dropped 1-2 there, invisibly, because nothing was moving.
+
+**Testing gotcha:** don't judge motion from screenshots taken with the DevTools
+animation playback rate slowed down. Doing that on the device showed text drawn
+at a fraction of its size mid-animation; `adb shell screenrecord` at full speed
+showed every frame correct. Record the real display instead.
+
 ## Debugging on the device
 
 The shell enables WebView debugging in debug builds only, which makes the page

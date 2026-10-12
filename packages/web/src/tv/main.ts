@@ -16,6 +16,7 @@ import type {
   RequestPermissionRequest,
   ServerMessage,
   SessionResetMessage,
+  ToolCallContentDiff,
   ToolKind,
 } from "../shared/protocol.js";
 import {
@@ -46,6 +47,59 @@ let screen: "pairing" | "main" = "pairing";
 /** Pending permission requests, oldest first. Only the first is shown. */
 const permissionQueue: Array<{ requestId: string; request: RequestPermissionRequest }> = [];
 let modalRequestId: string | null = null;
+
+// ---------------------------------------------------------------- motion
+
+/**
+ * Whether the bridge is replaying its buffer.
+ *
+ * A replay rebuilds the whole session in one burst after a reconnect. None of
+ * it is news, and dozens of rows sliding in at once would be noise, so nothing
+ * that arrives during one animates.
+ */
+let replaying = false;
+const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
+
+/**
+ * Play a one-shot CSS animation on `el`, keyed by its `data-motion` attribute.
+ *
+ * An attribute rather than a class because `paintItem` rewrites `className` on
+ * every streamed chunk, which would cut an entrance off after a frame. The
+ * attribute comes off when the element's own animation ends, so the same
+ * motion can be played again later.
+ */
+function playMotion(el: HTMLElement, name: string): void {
+  if (replaying) return;
+  if (el.dataset.motion === name) {
+    // Already mid-flight: restart it rather than let the second one vanish.
+    delete el.dataset.motion;
+    void el.offsetWidth;
+  }
+  el.dataset.motion = name;
+  const done = (event: AnimationEvent) => {
+    if (event.target !== el) return;
+    el.removeEventListener("animationend", done);
+    if (el.dataset.motion === name) delete el.dataset.motion;
+  };
+  el.addEventListener("animationend", done);
+}
+
+/**
+ * A quick push on whatever OK was just pressed on.
+ *
+ * The remote gives no feedback of its own, and some answers take a round trip
+ * to the bridge before anything else on screen changes. Scrolling panels are
+ * left alone: a whole panel moving reads as a glitch, not a press. A nudge
+ * down rather than a shrink, because scaling the prompt bar - 1700px wide -
+ * makes the TV re-rasterise it.
+ */
+function pressFeedback(el: HTMLElement): void {
+  if (reducedMotion.matches || el.classList.contains("scroller")) return;
+  el.animate([{ transform: "none" }, { transform: "translateY(4px)" }, { transform: "none" }], {
+    duration: 160,
+    easing: "ease-out",
+  });
+}
 
 // ---------------------------------------------------------------- status
 
@@ -80,7 +134,7 @@ function renderPairing(message = ""): void {
   const digits = Array.from({ length: CODE_LENGTH }, (_, i) => Number(saved[i] ?? 0) || 0);
 
   app.innerHTML = `
-    <section class="pairing">
+    <section class="pairing" id="pairing">
       <h1>Couchmode</h1>
       <p class="tagline">Your coding agent, in couch mode.</p>
       <div class="code-boxes" id="boxes"></div>
@@ -91,6 +145,9 @@ function renderPairing(message = ""): void {
   `;
 
   const boxes = app.querySelector<HTMLElement>("#boxes")!;
+  // A wrong code shakes the boxes - the universal "no" - rather than only
+  // printing a sentence under them.
+  playMotion(app.querySelector<HTMLElement>("#pairing")!, message ? "reject" : "enter");
   const submit = () => {
     const code = digits.join("");
     localStorage.setItem(STORAGE_KEY, code);
@@ -100,6 +157,7 @@ function renderPairing(message = ""): void {
   digits.forEach((_, index) => {
     const box = document.createElement("div");
     box.className = "digit";
+    box.style.setProperty("--i", String(index));
     box.innerHTML = `<span class="value">${digits[index]}</span><span class="arrows">▲▼</span>`;
     boxes.append(box);
 
@@ -110,7 +168,11 @@ function renderPairing(message = ""): void {
       onKey: (key) => {
         if (key !== "up" && key !== "down") return false;
         digits[index] = (digits[index]! + (key === "up" ? 1 : 9)) % 10;
-        box.querySelector(".value")!.textContent = String(digits[index]);
+        const value = box.querySelector<HTMLElement>(".value")!;
+        value.textContent = String(digits[index]);
+        // The new digit rolls in from the direction it came from, like a
+        // combination lock.
+        playMotion(value, key);
         return true;
       },
     });
@@ -159,6 +221,7 @@ const transcript = new TranscriptModel({
     node.dataset.index = String(index);
     feedEl.append(node);
     paintItem(node, item);
+    playMotion(node, "enter");
     if (!autoScroll) missedItems += 1;
     afterFeedChange();
   },
@@ -181,7 +244,8 @@ function paintItem(node: HTMLElement, item: TranscriptItem): void {
       node.className = "thought";
       node.innerHTML = `<div class="body">💭 ${escapeHtml(item.text)}</div>`;
       break;
-    case "tool_call":
+    case "tool_call": {
+      const previous = node.dataset.status;
       node.className = "tool";
       node.dataset.status = item.call.status;
       node.innerHTML = `
@@ -189,7 +253,14 @@ function paintItem(node: HTMLElement, item: TranscriptItem): void {
         <span class="title">${escapeHtml(oneLine(item.call.title))}</span>
         <span class="status">${escapeHtml(item.call.status.replace("_", " "))}</span>
       `;
+      // A tool finishing is where the agent's work lands. Mark the moment, so
+      // a status word changing colour is not the only thing that happens.
+      const settled = item.call.status === "completed" || item.call.status === "failed";
+      if (previous !== undefined && previous !== item.call.status && settled) {
+        playMotion(node, "settle");
+      }
       break;
+    }
     case "plan":
       node.className = "plan";
       node.innerHTML =
@@ -237,6 +308,13 @@ function paintJumpChip(): void {
 
 // ------------------------------------------------------------------ diff
 
+/** The diff currently drawn in the Changes panel. */
+let shownDiff: ToolCallContentDiff | null = null;
+
+function sameDiff(a: ToolCallContentDiff | null, b: ToolCallContentDiff): boolean {
+  return a !== null && a.path === b.path && a.oldText === b.oldText && a.newText === b.newText;
+}
+
 function paintDiff(): void {
   if (!diffBodyEl || !diffHeadEl) return;
   const panel = app.querySelector<HTMLElement>("#diff-panel");
@@ -254,11 +332,23 @@ function paintDiff(): void {
     }
     stage?.classList.add("stage-solo");
     diffBodyEl.innerHTML = "";
+    shownDiff = null;
     return;
   }
 
-  if (panel) panel.hidden = false;
+  if (panel?.hidden) {
+    panel.hidden = false;
+    // The feed gives up 40% of the screen at this moment. Sliding the panel in
+    // makes that read as the agent's change arriving, not the layout jumping.
+    playMotion(panel, "enter");
+  }
   stage?.classList.remove("stage-solo");
+
+  // This runs on every streamed chunk. Re-diffing an unchanged file - an LCS
+  // over every line - and redrawing 400 rows is wasted work on a TV stick, and
+  // would replay the diff's entrance below on every chunk.
+  if (sameDiff(shownDiff, diff)) return;
+  shownDiff = diff;
 
   const view = buildDiff(diff);
   diffHeadEl.innerHTML = `
@@ -278,6 +368,9 @@ function paintDiff(): void {
       ? `<div class="truncated">… ${view.lines.length - shown.length} more lines</div>`
       : "";
   diffBodyEl.innerHTML = `<div class="diff">${rows}${more}</div>`;
+
+  const block = diffBodyEl.firstElementChild;
+  if (block instanceof HTMLElement) playMotion(block, "enter");
 }
 
 /** Keep the tail of a path: the filename matters more than the repo root. */
@@ -448,6 +541,11 @@ function renderMain(): void {
   feedEl = app.querySelector<HTMLElement>("#feed");
   diffBodyEl = app.querySelector<HTMLElement>("#diff");
   diffHeadEl = app.querySelector<HTMLElement>("#diff-head");
+  shownDiff = null;
+
+  // Pairing worked: the screen assembles itself rather than cutting over, top
+  // bar from above and controls from below.
+  playMotion(app, "main");
 
   // Auto-scroll, unless the viewer has deliberately scrolled up to read.
   feedEl?.addEventListener("scroll", () => {
@@ -714,6 +812,16 @@ function showNextPermission(): void {
     </div>
   `;
   app.append(scrim);
+  // The moment the whole product exists for: it rises in over a fading scrim.
+  // Set directly rather than through playMotion: the scrim's own fade ends
+  // first, and clearing the attribute then would cut the modal's rise short.
+  if (!replaying) scrim.dataset.motion = "enter";
+  // An edit's diff and its permission request arrive together, and the scrim
+  // is about to cover the Changes panel. Finish the panel's entrance now: the
+  // Fire TV has frames enough for one entrance at a time, not two.
+  for (const el of app.querySelectorAll<HTMLElement>("#diff-panel, .diff")) {
+    for (const animation of el.getAnimations()) animation.finish();
+  }
 
   const detail = scrim.querySelector<HTMLElement>("#perm-detail")!;
   focus.register(detail, {
@@ -751,6 +859,9 @@ function showNextPermission(): void {
 
 function closePermission(requestId: string, optionId: string | null, by: string): void {
   const index = permissionQueue.findIndex((entry) => entry.requestId === requestId);
+  const chosenKind = permissionQueue[index]?.request.options.find(
+    (option) => option.optionId === optionId,
+  )?.kind;
   if (index >= 0) permissionQueue.splice(index, 1);
   if (modalRequestId !== requestId) return;
 
@@ -759,7 +870,14 @@ function closePermission(requestId: string, optionId: string | null, by: string)
   if (scrim && request) {
     // Briefly show who answered - on a shared screen that matters.
     const label = optionId ? `“${optionId}” · answered on ${by}` : `cancelled`;
-    request.innerHTML = `<div class="resolved">✓ ${escapeHtml(label)}</div>`;
+    const allowed = /^allow/.test(chosenKind ?? "");
+    request.dataset.outcome = allowed ? "allow" : "reject";
+    request.innerHTML = `<div class="resolved">${allowed ? "✓" : "✕"} ${escapeHtml(label)}</div>`;
+    // Stamp the answer, hold it long enough to read, then fold the modal away
+    // inside the same 900ms the dismissal below has always taken. Set directly,
+    // not through playMotion: the fold must hold its last frame until the
+    // element is removed, or the scrim flashes back for a frame first.
+    if (!replaying) scrim.dataset.motion = "resolve";
   }
 
   window.setTimeout(() => {
@@ -856,6 +974,7 @@ function appendSessionMark(title: string, detail: string): void {
   node.className = "session-mark";
   node.innerHTML = `<div class="title">◆ ${escapeHtml(title)}</div><div class="detail">${escapeHtml(detail)}</div>`;
   feedEl.append(node);
+  playMotion(node, "enter");
   jumpToLatest();
 }
 
@@ -881,6 +1000,7 @@ function openAgentPicker(): void {
   const scrim = document.createElement("div");
   scrim.className = "scrim";
   scrim.id = "agent-picker";
+  if (!replaying) scrim.dataset.motion = "enter";
   scrim.innerHTML = `
     <div class="modal picker">
       <div class="kicker">Agent</div>
@@ -1012,7 +1132,11 @@ document.addEventListener(
       // The composer handles its own keys; only Back escapes to us.
       return;
     }
-    if (focus.handleKey(event)) event.preventDefault();
+    const target = focus.focused;
+    if (focus.handleKey(event)) {
+      event.preventDefault();
+      if (target && toNavKey(event) === "enter") pressFeedback(target);
+    }
   },
   true,
 );
@@ -1040,6 +1164,8 @@ window.couchmodeMenu = () => {
 };
 
 client.on("status", (connection: ConnectionStatus) => {
+  // A link that drops mid-replay never sends its replayEnd.
+  if (connection.state !== "paired") replaying = false;
   if (connection.state === "rejected") {
     renderPairing("That code didn't match. Check your terminal and try again.");
     return;
@@ -1051,8 +1177,14 @@ client.on("status", (connection: ConnectionStatus) => {
 });
 
 /** Reconnecting re-pairs, and pairing replays: rebuild instead of appending. */
-client.on("replayStart", () => resyncFromReplay());
-client.on("replayEnd", () => settleAfterReplay());
+client.on("replayStart", () => {
+  replaying = true;
+  resyncFromReplay();
+});
+client.on("replayEnd", () => {
+  replaying = false;
+  settleAfterReplay();
+});
 
 client.on("message", (message: ServerMessage) => {
   switch (message.type) {
