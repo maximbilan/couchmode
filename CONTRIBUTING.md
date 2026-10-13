@@ -44,8 +44,8 @@ node packages/bridge/dist/cli.js --fake --code 123456
 To capture a new fixture from a real run:
 
 ```sh
-node packages/bridge/dist/cli.js --agent claude --record fixtures/my-run.jsonl
-node packages/bridge/scripts/verify-fixture.mjs fixtures/my-run.jsonl <replay.jsonl>
+node packages/bridge/dist/cli.js --agent claude --record packages/bridge/fixtures/my-run.jsonl
+node packages/bridge/scripts/verify-fixture.mjs packages/bridge/fixtures/my-run.jsonl <replay.jsonl>
 ```
 
 Recordings scrub the project directory to `/project`, the home directory to
@@ -53,11 +53,11 @@ Recordings scrub the project directory to `/project`, the home directory to
 it anyway.
 
 There is one hand-written fixture,
-`fixtures/synthetic-plan-and-thoughts.jsonl`. It carries a `"synthetic": true`
-header so nobody mistakes it for a recording, and exists because the real Claude
-run happens to contain no `plan` or `agent_thought_chunk` updates — without it
-those two render paths would ship untested. Prefer a real recording whenever one
-can produce the updates you need.
+`packages/bridge/fixtures/synthetic-plan-and-thoughts.jsonl`. It carries a
+`"synthetic": true` header so nobody mistakes it for a recording, and exists
+because the real Claude run happens to contain no `plan` or
+`agent_thought_chunk` updates — without it those two render paths would ship
+untested. Prefer a real recording whenever one can produce the updates you need.
 
 ## Ground rules
 
@@ -68,7 +68,7 @@ can produce the updates you need.
 - **Never touch credentials.** Couchmode does not read, store, log, or forward
   them, and nothing auth-related is sent to a client.
 - Conventional commits.
-- `pnpm lint` and `pnpm typecheck` pass before a PR.
+- `pnpm lint` and `pnpm check` pass before a PR. CI runs both.
 - New ACP `session/update` handling gets a row in
   [`docs/acp-on-tv.md`](docs/acp-on-tv.md) — including types you decide to
   ignore, with the reason.

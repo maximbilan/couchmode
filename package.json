@@ -4,6 +4,13 @@
   "private": true,
   "description": "Your coding agent, in couch mode. An Agent Client Protocol (ACP) client for the TV.",
   "license": "MIT",
+  "author": "Maksym Bilan",
+  "homepage": "https://github.com/maximbilan/couchmode#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/maximbilan/couchmode.git"
+  },
+  "bugs": "https://github.com/maximbilan/couchmode/issues",
   "type": "module",
   "engines": {
     "node": ">=22"
