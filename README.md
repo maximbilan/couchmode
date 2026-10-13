@@ -1,5 +1,8 @@
 # Couchmode
 
+[![CI](https://github.com/maximbilan/couchmode/actions/workflows/ci.yml/badge.svg)](https://github.com/maximbilan/couchmode/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+
 **Your coding agent, in couch mode.** The [Agent Client Protocol](https://agentclientprotocol.com)
 client for the living room.
 
@@ -8,7 +11,7 @@ couch: your agent runs on your laptop against a real project, a Fire TV shows
 what it is doing in large readable form, and you approve or reject its tool
 calls with the remote.
 
-> _screenshot / GIF placeholder — added in M3_
+![Couchmode on a TV: Claude asks permission to edit README.md, showing the change and Yes, "Yes, allow all edits during this session" and No buttons, with Yes focused](docs/images/tv-permission.png)
 
 ## Why this exists
 
@@ -21,10 +24,11 @@ concept maps to a 10-foot UI — see [`docs/acp-on-tv.md`](docs/acp-on-tv.md).
 
 ## Run in 60 seconds
 
-No TV needed — your phone or a second browser tab is enough.
+No TV needed — your phone or a second browser tab is enough. Requires
+**Node 22+** (the Claude adapter requires it) and `pnpm`.
 
 ```sh
-git clone https://github.com/<you>/couchmode && cd couchmode
+git clone https://github.com/maximbilan/couchmode && cd couchmode
 pnpm install && pnpm build
 
 cd ~/some/project
@@ -35,8 +39,6 @@ The terminal prints a 6-digit pair code and a LAN URL. Open
 `http://<your-ip>:7777/phone` on your phone, type the code, and ask the agent
 for something. When it wants to edit a file or run a command, the approval
 lands on your phone.
-
-Requires **Node 22+** (the Claude adapter requires it) and `pnpm`.
 
 ### Try it without spending tokens
 
@@ -68,60 +70,25 @@ spatially — there is no tab order, because a remote has no Tab key.
 | Back    | close what is open, answer a permission request with its deny option, or jump to the latest    |
 | MENU    | switch agents (long press opens the Fire TV shell's own settings form)                         |
 
-The **Changes** panel only appears once the agent has actually changed a file.
-Until then the activity feed has the screen to itself, rather than half of it
-being spent on an empty box.
+- **Permission requests take over the screen.** A modal takes focus and shows
+  the agent's own options in the order it gave them. See
+  [which button the remote starts on](docs/acp-on-tv.md#which-button-the-remote-starts-on),
+  and why.
+- **Long conversations stay escapable.** A press moves most of a page, holding
+  the button accelerates, and **Back always returns to the present** — the
+  prompt bar is never more than two presses away, however long the transcript.
+- **The connection is stated in words** — **Connected**, **Reconnecting…**,
+  **Disconnected · retrying in 4s** — because at three metres a small green dot
+  and a small grey one are the same dot. Reconnecting rebuilds the transcript
+  rather than duplicating it.
+- **Switching agents happens on the TV.** Focus the agent's name or press
+  **MENU**. The picker names the command each agent would actually run, and
+  warns that switching ends the session before you choose.
+- **The Changes panel** only appears once the agent has actually changed a
+  file. Until then the activity feed has the whole screen.
 
-### Getting out of a long conversation
-
-An hour-old transcript is taller than the screen many times over, and ▼ scrolls
-the feed rather than leaving it — so on a naive design the prompt bar recedes as
-the conversation grows, and while the agent is streaming it can recede faster
-than you can scroll.
-
-Three things keep that bounded. A press moves most of a page rather than a fixed
-sliver; holding the button accelerates; and **Back always returns to the
-present** in one press, whatever you were reading. The prompt bar is then one ▼
-away — two presses from anywhere, however long the conversation.
-
-While you are scrolled up, the feed says so: a chip counts what has arrived
-since and names the button that catches you up. What is on screen is no longer
-live, and a 10-foot UI should never leave that ambiguous.
-
-### Knowing whether it is connected
-
-The top bar states the link in words — **Connected**, **Reconnecting…**,
-**Disconnected · retrying in 4s** — because at three metres a small green dot
-and a small grey one are the same dot. While the link is down the agent's status
-is dimmed: "Thinking" describes what was true before the drop, not now.
-
-Couchmode notices a link that has gone quiet as well as one that has closed. A
-TV that sleeps, or an access point that hands the client to another radio,
-leaves a socket the browser still calls open and the bridge never hears from
-again; a 15-second application-level ping is the only thing that catches it.
-
-Reconnecting re-pairs, and pairing replays the session so far, so the transcript
-is rebuilt rather than appended to — reconnect as often as you like and nothing
-is duplicated. The feed marks where it caught up.
-
-### Switching agents
-
-Focus the agent's name in the top bar, or press **MENU**, to switch agents
-without restarting the bridge. The picker names the command each agent would
-actually run, because four rows that all say "CLI" are not a choice.
-
-Switching ends the ACP session — a session belongs to the agent that created it
-— so the transcript and any pending approvals are cleared, and the picker says
-so before you choose. The new session announces itself: the top bar shows the
-incoming agent as it starts, a rule across the feed says which agent the session
-belongs to and what it replaced, and a banner confirms when it is ready to take
-a prompt. Choosing the agent that is already running restarts it, which is what
-you want when one has wedged.
-
-When the agent asks permission, a modal takes focus and shows the agent's own
-options in the order it gave them. See
-[`docs/acp-on-tv.md`](docs/acp-on-tv.md#which-button-the-remote-starts-on) for
-which button the remote starts on and why.
+The reasoning behind each of these is in
+[ACP on a TV](docs/acp-on-tv.md#the-10-foot-layout).
 
 ## Fire TV setup
 
@@ -156,28 +123,19 @@ is on — the shell says so, counts down, and keeps retrying by itself until the
 page loads. Reopening a laptop lid in another room is enough; nothing needs
 pressing on the TV.
 
-**MENU** is two buttons in one: a short press opens the agent picker, a long
-press opens the shell's own settings form. The shell swallows the key either way
-so Fire OS cannot pop its own menu over the app, and hands the short press to
-the page the same way it hands over Back.
-
-The full friction log, including the two bugs this shook out, is in
+The full friction log, including the bugs real hardware shook out, is in
 [`docs/firetv-notes.md`](docs/firetv-notes.md).
 
 ## How it works
 
 ```
- ┌─────────────────────────────┐         ┌──────────────────┐
- │        your machine         │         │     Fire TV      │
- │                             │         │                  │
- │  agent CLI  ◄──stdio───►    │         │  ┌────────────┐  │
- │  (claude,      JSON-RPC     │         │  │  WebView   │  │
- │   codex, …)        │        │   LAN   │  │    /tv     │  │
- │                    ▼        │◄───────►│  └────────────┘  │
- │            couchmode bridge │ WebSocket└──────────────────┘
- │            (the ACP client) │         ┌──────────────────┐
- │                             │◄───────►│  phone  /phone   │
- └─────────────────────────────┘         └──────────────────┘
+ ┌─────────────── your machine ───────────────┐            ┌─── Fire TV ────┐
+ │                                            │◄──────────►│  WebView /tv   │
+ │  agent CLI  ◄─stdio─►  couchmode bridge    │  WebSocket └────────────────┘
+ │  (claude,   JSON-RPC   (the ACP client)    │   on LAN   ┌──── phone ─────┐
+ │   codex, …)                                │◄──────────►│  browser       │
+ │                                            │            │  /phone        │
+ └────────────────────────────────────────────┘            └────────────────┘
 ```
 
 The bridge is the ACP client. It owns the session, answers the agent's
@@ -231,6 +189,19 @@ Couchmode prints that agent's own login command from `agents.json` and shows the
 agent's error text in the UI. `ANTHROPIC_API_KEY` and friends are optional
 pass-throughs, documented in [`.env.example`](.env.example) — never required.
 
+## Security
+
+Couchmode is built for a network you trust, like your home Wi-Fi.
+
+- The bridge serves plain HTTP and WebSocket on every interface by default. The
+  pair code is the only thing between another device on the network and your
+  session — reading it, sending prompts, and approving tool calls.
+- Do not forward the port to the internet or run the bridge on shared Wi-Fi.
+  `--host 127.0.0.1` keeps it to this machine.
+- The agent runs as you. Couchmode confines the file reads and writes it does
+  on the agent's behalf to the project directory, but approvals only cover what
+  the agent chooses to ask about.
+
 ## CLI
 
 ```
@@ -247,19 +218,25 @@ couchmode [options]
   --record <file>    record this session to a .jsonl fixture
 ```
 
-## Roadmap
+## Status
 
-- [x] **M1** — ACP bridge + phone client, recorded fixture, `--fake` replay
-- [x] **M2** — `/tv` 10-foot UI: focus manager, permission modal, diff panel
-- [x] **M3** — Fire TV shell (Kotlin WebView), remote control, Back handling
-- [x] **M4** — real projects, more agents, agent picker, reconnect, voice
-- [ ] **M5** — demo assets
+Couchmode works end to end on a real Fire TV with Claude Code and Kiro. Not
+built yet:
+
+- **Terminals.** The bridge does not advertise `terminal/*`, so agents run
+  commands themselves and report them as `execute` tool calls.
+- **Session modes from the TV.** The mode is chosen per agent in `agents.json`
+  or with `--mode`; there is no switcher on screen.
+- **A prompt idle timeout**, so an agent that goes silent mid-turn surfaces as
+  an error rather than "Thinking" forever.
+- **Codex and Gemini** are configured but untested.
 
 ## Documentation
 
 - [ACP on a TV](docs/acp-on-tv.md) — the full protocol-to-UI mapping
 - [Fire TV notes](docs/firetv-notes.md) — device friction log
 - [Upstream issues](docs/upstream-issues.md) — gaps found in ACP and adapters
+- [Contributing](CONTRIBUTING.md) — setup, checks, and working from fixtures
 
 ## Hackathon
 
@@ -268,4 +245,4 @@ Open Source mini challenge.
 
 ## License
 
-MIT
+[MIT](LICENSE)

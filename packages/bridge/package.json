@@ -3,6 +3,14 @@
   "version": "0.1.0",
   "description": "Couchmode bridge: runs on your machine, is the ACP client, relays to TV and phone over the LAN.",
   "license": "MIT",
+  "author": "Maksym Bilan",
+  "homepage": "https://github.com/maximbilan/couchmode#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/maximbilan/couchmode.git",
+    "directory": "packages/bridge"
+  },
+  "bugs": "https://github.com/maximbilan/couchmode/issues",
   "type": "module",
   "engines": {
     "node": ">=22"

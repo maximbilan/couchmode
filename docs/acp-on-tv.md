@@ -55,7 +55,7 @@ called (ACP: clients and agents "MUST treat all capabilities omitted in the
 
 - `terminal` — no `terminal/*` implementation yet. Agents fall back to running
   commands themselves and reporting them as `kind: "execute"` tool calls, which
-  is what the TV shows today. Planned for a later milestone.
+  is what the TV shows today. Not implemented yet.
 - `elicitation` — structured input is a keyboard-shaped interaction; the phone
   is the natural home for it, not the remote.
 
@@ -113,7 +113,7 @@ than a silent drop. The client logs each one once with its reason.
 | `usage_update`                                  | token/cost counters are planned for the TV top bar    |
 | `session_info_update`                           | title changes do not affect the 10-foot layout yet    |
 | `config_option_update`                          | model/mode pickers are desk-UI concerns for now       |
-| `current_mode_update`                           | mode switching from the TV is a later milestone       |
+| `current_mode_update`                           | mode switching from the TV is not built yet           |
 | `compaction_update`, `compaction_summary_chunk` | context compaction is invisible to a viewer           |
 | `plan_update`, `plan_removed`                   | incremental plan edits fold into the last full `plan` |
 
