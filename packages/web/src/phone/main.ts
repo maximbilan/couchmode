@@ -19,6 +19,12 @@ import { escapeHtml, renderMarkdown, toolKindIcon, TranscriptModel } from "../sh
 import type { TranscriptItem } from "../shared/render.js";
 
 const STORAGE_KEY = "couchmode.phone.code";
+/**
+ * `?code=` pairs by itself, but only once per page load. A rejection redraws
+ * the pairing screen, and re-submitting the same code from there would loop
+ * against the bridge as fast as it can answer.
+ */
+let urlCodeTried = false;
 
 const STATUS_LABEL: Record<AgentStatus, string> = {
   starting: "Starting",
@@ -109,7 +115,10 @@ function showPairing(message = ""): void {
   });
   input.focus();
 
-  if (saved && codeFromUrl) submit();
+  if (saved && codeFromUrl && !urlCodeTried) {
+    urlCodeTried = true;
+    submit();
+  }
 }
 
 // --- main screen ------------------------------------------------------------
