@@ -32,6 +32,12 @@ import { FocusManager, scrollerKeyHandler, toNavKey } from "../shared/focus.js";
 
 const STORAGE_KEY = "couchmode.tv.code";
 const CODE_LENGTH = 6;
+/**
+ * `?code=` pairs by itself, but only once per page load. A rejection redraws
+ * the pairing screen, and re-submitting the same code from there would loop
+ * against the bridge as fast as it can answer.
+ */
+let urlCodeTried = false;
 /** A whole-file diff can be thousands of lines; nobody reads that from a sofa. */
 const DIFF_LINE_LIMIT = 400;
 
@@ -180,7 +186,10 @@ function renderPairing(message = ""): void {
 
   focus.focusFirstInLayer();
   paintPairingStatus();
-  if (fromUrl) submit();
+  if (fromUrl && !urlCodeTried) {
+    urlCodeTried = true;
+    submit();
+  }
 }
 
 /** The pairing screen says what the socket is doing, not just "nothing yet". */
