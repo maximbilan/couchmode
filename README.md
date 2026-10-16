@@ -52,9 +52,10 @@ has paired once connects by itself on every later run.
 ### Try it without spending tokens
 
 Couchmode ships a recording of a real Claude session and can replay it as a
-live ACP agent:
+live ACP agent. From the clone:
 
 ```sh
+cd couchmode
 scripts/start.sh --fake
 ```
 
@@ -104,7 +105,17 @@ The reasoning behind each of these is in
 Verified on a Fire TV Stick running **Fire OS 8.1.8.2** (Android 11, API 30).
 
 Enable ADB debugging on the device — _Settings → My Fire TV → Developer
-Options → ADB debugging_ — then:
+Options → ADB debugging_ — then install the app from the
+[latest release](https://github.com/maximbilan/couchmode/releases/latest):
+
+```sh
+curl -LO https://github.com/maximbilan/couchmode/releases/latest/download/couchmode-firetv.apk
+adb connect <fire-tv-ip>:5555
+adb install couchmode-firetv.apk
+```
+
+Or build it from source and install it in one step, which needs a JDK and the
+Android SDK:
 
 ```sh
 TV_IP=192.168.1.35 scripts/install-tv.sh
