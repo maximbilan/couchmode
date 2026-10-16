@@ -11,7 +11,10 @@ couch: your agent runs on your laptop against a real project, a Fire TV shows
 what it is doing in large readable form, and you approve or reject its tool
 calls with the remote.
 
-![Couchmode on a TV: Claude asks permission to edit README.md, showing the change and Yes, "Yes, allow all edits during this session" and No buttons, with Yes focused](docs/images/tv-permission.png)
+▶ **[Watch the demo](https://youtu.be/sEn8nKFs7to)**: two minutes, recorded on
+a real Fire TV.
+
+[![Couchmode on a TV: Claude asks permission to edit README.md, showing the change and Yes, "Yes, allow all edits during this session" and No buttons, with Yes focused](docs/images/tv-permission.png)](https://youtu.be/sEn8nKFs7to)
 
 ## Why this exists
 
@@ -158,14 +161,12 @@ Agent launch is data, not code: see
 [`packages/bridge/src/config/agents.json`](packages/bridge/src/config/agents.json),
 overridable at `~/.couchmode/agents.json`.
 
-| Agent  | Command                                        | Status                                |
-| ------ | ---------------------------------------------- | ------------------------------------- |
-| Claude | `npx -y @agentclientprotocol/claude-agent-acp` | ✅ tested — recorded fixture included |
-| Kiro   | `kiro-cli acp`                                 | ✅ tested on Kiro CLI 2.21.4          |
-| Codex  | `npx -y @agentclientprotocol/codex-acp`        | ⚪ untested                           |
-| Gemini | `gemini --acp --skip-trust`                    | ⚪ untested                           |
-
-Codex and Gemini are configured but have not been run yet.
+| Agent  | Command                                        |
+| ------ | ---------------------------------------------- |
+| Claude | `npx -y @agentclientprotocol/claude-agent-acp` |
+| Kiro   | `kiro-cli acp`                                 |
+| Codex  | `npx -y @agentclientprotocol/codex-acp`        |
+| Gemini | `gemini --acp --skip-trust`                    |
 
 Running an agent on Amazon Bedrock needs nothing from Couchmode: configure it in
 the agent itself, and the agent Couchmode spawns inherits it.
@@ -226,19 +227,6 @@ couchmode [options]
   --fake [file]      replay a recorded session instead of spawning an agent
   --record <file>    record this session to a .jsonl fixture
 ```
-
-## Status
-
-Couchmode works end to end on a real Fire TV with Claude Code and Kiro. Not
-built yet:
-
-- **Terminals.** The bridge does not advertise `terminal/*`, so agents run
-  commands themselves and report them as `execute` tool calls.
-- **Session modes from the TV.** The mode is chosen per agent in `agents.json`
-  or with `--mode`; there is no switcher on screen.
-- **A prompt idle timeout**, so an agent that goes silent mid-turn surfaces as
-  an error rather than "Thinking" forever.
-- **Codex and Gemini** are configured but untested.
 
 ## Documentation
 
