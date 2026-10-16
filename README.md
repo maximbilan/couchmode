@@ -25,14 +25,13 @@ concept maps to a 10-foot UI — see [`docs/acp-on-tv.md`](docs/acp-on-tv.md).
 ## Run in 60 seconds
 
 No TV needed — your phone or a second browser tab is enough. Requires
-**Node 22+** (the Claude adapter requires it) and `pnpm`.
+**Node 22+** (the Claude adapter requires it).
 
 ```sh
-git clone https://github.com/maximbilan/couchmode && cd couchmode
-pnpm install && pnpm build
+git clone https://github.com/maximbilan/couchmode
 
 cd ~/some/project
-node /path/to/couchmode/packages/bridge/dist/cli.js --agent claude
+/path/to/couchmode/scripts/start.sh
 ```
 
 The terminal prints a 6-digit pair code and a LAN URL. Open
@@ -40,13 +39,20 @@ The terminal prints a 6-digit pair code and a LAN URL. Open
 for something. When it wants to edit a file or run a command, the approval
 lands on your phone.
 
+`scripts/start.sh` switches to Node 22 through nvm if your current Node is
+older, installs dependencies on the first run, gets `pnpm` through corepack,
+and builds. It passes every option on to the bridge — `--agent codex`,
+`--port 8080`, `--help` — and starts the agent in the directory you ran it from.
+It also keeps the pair code in `~/.couchmode/pair-code`, so a TV or phone that
+has paired once connects by itself on every later run.
+
 ### Try it without spending tokens
 
 Couchmode ships a recording of a real Claude session and can replay it as a
 live ACP agent:
 
 ```sh
-node packages/bridge/dist/cli.js --fake
+scripts/start.sh --fake
 ```
 
 The replay includes two permission requests and a file diff, and blocks until
@@ -197,6 +203,8 @@ Couchmode is built for a network you trust, like your home Wi-Fi.
 - The bridge serves plain HTTP and WebSocket on every interface by default. The
   pair code is the only thing between another device on the network and your
   session — reading it, sending prompts, and approving tool calls.
+  `scripts/start.sh` reuses one code across runs; delete
+  `~/.couchmode/pair-code` for a new one.
 - Do not forward the port to the internet or run the bridge on shared Wi-Fi.
   `--host 127.0.0.1` keeps it to this machine.
 - The agent runs as you. Couchmode confines the file reads and writes it does
