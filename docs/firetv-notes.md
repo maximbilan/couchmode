@@ -148,16 +148,41 @@ On a television that is a dead end; there is nothing to type and nowhere to go.
 `onPageFinished` now returns early when a `loadFailed` flag is set, cleared on
 `onPageStarted` for each new navigation.
 
-The panel also retries by itself, 2s doubling to 15s, with the countdown on
-screen and a "Try now" button for impatience. The bridge runs on a laptop that
-gets closed and reopened, often in another room, so needing someone to walk to
-the TV and press a button is the wrong recovery model. `onResume` retries
-immediately — returning to the app is itself a reason to think the odds have
-changed — and `onStop` cancels the timer.
+The panel also recovers by itself. The bridge runs on a laptop that gets closed
+and reopened, often in another room, so needing someone to walk to the TV and
+press a button is the wrong recovery model. `onResume` looks again immediately —
+returning to the app is itself a reason to think the odds have changed — and
+`onStop` stops looking.
 
 `apps/tv-shell/scripts/ftv-offline-check.sh` covers both halves against a real
 device: launch with nothing on the port, then start the bridge and assert the
 page comes back with no key press.
+
+## The offline screen has to look like the app
+
+The first working version of that panel reloaded the page on a timer, 2s
+doubling to 15s, with a countdown and stock buttons. On a real TV it read as
+broken. Fire OS draws a DeviceDefault button as a pale lavender slab in capitals
+with no visible focus, so the screen looked like a system crash dialog. The
+headline was an IP address. And once the bridge did start, the page could take
+up to 15s to notice.
+
+The shell now probes the port with a bare TCP connect every 2s
+(`BridgeReach.kt`) and only loads the page once something answers, which puts
+the page on screen about two seconds after the bridge starts. There is no
+backoff: the connect is cheap, and someone is sitting there waiting.
+
+The probe also separates two failures a WebView reports the same way. A refused
+connection means the computer is awake and the bridge is not running; a timeout
+or no route means the TV cannot find the computer at all. Each gets its own
+words. On Android a timed `Socket.connect` throws `ConnectException` for both a
+refusal and `EHOSTUNREACH`, so it is the errno underneath that tells them apart.
+A firewall that drops rather than refuses — macOS stealth mode — makes a stopped
+bridge look like a missing computer, which is why that message still mentions
+the bridge.
+
+Every `Button` takes `Couchmode.Button` from the theme: the same panel colours
+and 3dp yellow focus ring as the setup form's fields.
 
 ## MENU has to be forwarded by hand
 

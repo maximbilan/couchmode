@@ -10,5 +10,18 @@
         <item name="android:windowNoTitle">true</item>
         <item name="android:windowFullscreen">true</item>
         <item name="android:windowLayoutInDisplayCutoutMode">shortEdges</item>
+        <item name="android:buttonStyle">@style/Couchmode.Button</item>
+    </style>
+
+    <style name="Couchmode.Button" parent="@android:style/Widget.DeviceDefault.Button">
+        <item name="android:background">@drawable/button_background</item>
+        <item name="android:textColor">@color/text</item>
+        <item name="android:textSize">20sp</item>
+        <item name="android:textStyle">bold</item>
+        <item name="android:textAllCaps">false</item>
+        <item name="android:minHeight">64dp</item>
+        <item name="android:paddingHorizontal">40dp</item>
+        <!-- No raise-on-press shadow: focus is the ring, nothing else. -->
+        <item name="android:stateListAnimator">@null</item>
     </style>
 </resources>

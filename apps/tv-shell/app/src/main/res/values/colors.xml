@@ -7,6 +7,7 @@
     <color name="line">#28313D</color>
     <color name="text">#F2F6FA</color>
     <color name="muted">#93A4B8</color>
+    <color name="accent">#5EB0FF</color>
     <color name="focus">#FFD166</color>
     <color name="danger">#FF6B6B</color>
 

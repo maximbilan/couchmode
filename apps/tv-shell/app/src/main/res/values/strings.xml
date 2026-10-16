@@ -10,8 +10,11 @@
     <string name="setup_hint">Press and hold MENU at any time to change these.</string>
     <string name="error_host_required">Enter the address shown in your terminal.</string>
     <string name="error_code_required">Enter the 6-digit pair code.</string>
-    <string name="error_load_failed">Could not reach %1$s.\n\nCheck the bridge is running and that this TV is on the same network.\n\nTrying again in %2$d s…</string>
-    <string name="error_load_retrying">Reconnecting to %1$s…</string>
-    <string name="retry">Try now</string>
+    <string name="offline_connecting_title">Connecting to your computer…</string>
+    <string name="offline_not_running_title">Couchmode isn’t running on your computer</string>
+    <string name="offline_not_running_body">Start the bridge in your project folder.\nThis screen connects by itself as soon as it’s up.</string>
+    <string name="offline_unreachable_title">Can’t find your computer</string>
+    <string name="offline_unreachable_body">Make sure it’s awake and on the same Wi-Fi as this TV, with the bridge running.\nThis screen connects by itself as soon as it can.</string>
+    <string name="offline_looking">Looking for %1$s</string>
     <string name="change_settings">Change address</string>
 </resources>
