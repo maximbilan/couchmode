@@ -118,10 +118,11 @@ Two Fire OS behaviours worth knowing as a user:
 - While the on-screen keyboard is up, **Back is how you send a prompt**. Fire OS
   commits the text when the keyboard closes. There is also a Send button.
 
-If the bridge is not running when the app starts — or it goes away while the TV
-is on — the shell says so, counts down, and keeps retrying by itself until the
-page loads. Reopening a laptop lid in another room is enough; nothing needs
-pressing on the TV.
+If the bridge is not running when the app starts, the shell says which problem
+it is — your computer is there but the bridge isn't running, or the TV can't
+find your computer at all — and keeps checking every two seconds. The page
+appears by itself shortly after the bridge starts. Reopening a laptop lid in
+another room is enough; nothing needs pressing on the TV.
 
 The full friction log, including the bugs real hardware shook out, is in
 [`docs/firetv-notes.md`](docs/firetv-notes.md).

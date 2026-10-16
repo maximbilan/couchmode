@@ -11,7 +11,9 @@
 # The bug this exists for: `onPageFinished` fires for Chromium's own error
 # document too, so the shell's retry panel was shown by `onReceivedError` and
 # then immediately hidden again, leaving a bare net::ERR_CONNECTION_REFUSED page
-# on a television with no way out.
+# on a television with no way out. The shell now probes the port before it
+# loads anything, and this checks that it says which failure it saw and picks
+# the bridge up within a few seconds of it starting.
 set -uo pipefail
 
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
@@ -31,6 +33,11 @@ check() {
   if [ "$2" = "1" ]; then echo "✓ $1${3:+ — $3}"; else echo "✗ $1${3:+ — $3}"; FAILED=1; fi
 }
 
+# A View's flags start with V when visible, I when invisible and G when gone.
+visible() {
+  echo "$TOP" | grep "app:id/$1[ }]" | grep -q '{[0-9a-f]* V' && echo 1 || echo 0
+}
+
 adb connect "$DEVICE" > /dev/null 2>&1
 sleep 1
 
@@ -48,30 +55,28 @@ adb -s "$DEVICE" shell monkey -p "$PACKAGE" -c android.intent.category.LEANBACK_
 sleep 7
 
 TOP="$(adb -s "$DEVICE" shell dumpsys activity top 2>/dev/null)"
-# A visible View prints "V" in the first flag column; a GONE one prints "G".
-PANEL_VISIBLE=0
-echo "$TOP" | grep -q 'id/errorPanel' && echo "$TOP" | grep 'id/errorPanel' | grep -qv 'G\.\.\.\.\.\.\.' && PANEL_VISIBLE=1
-check "the shell shows its own panel, not Chromium's error page" "$PANEL_VISIBLE" \
-  "$(echo "$TOP" | grep -o 'id/errorPanel' | head -1)"
+check "the shell shows its own panel, not Chromium's error page" "$(visible errorPanel)"
 
-LOGGED=0
-adb -s "$DEVICE" logcat -d -s Couchmode | grep -q "load failed" && LOGGED=1
-check "the load failure is logged" "$LOGGED"
+# This machine is awake with nothing on the port, so the TV should be told
+# "not running", not "can't find your computer".
+REFUSED=0
+adb -s "$DEVICE" logcat -d -s Couchmode | grep -q "bridge probe: NOT_RUNNING" && REFUSED=1
+check "it sees the bridge is not running, rather than the computer missing" "$REFUSED"
 
-RETRIES=$(adb -s "$DEVICE" logcat -d -s Couchmode | grep -c "load failed")
-check "it keeps retrying on its own" "$([ "$RETRIES" -ge 2 ] && echo 1 || echo 0)" "$RETRIES attempts in 7s"
+PROBES=$(adb -s "$DEVICE" logcat -d -s Couchmode | grep -c "bridge probe")
+check "it keeps looking on its own" "$([ "$PROBES" -ge 2 ] && echo 1 || echo 0)" "$PROBES probes in 7s"
 
 echo "==> starting the bridge; no remote input from here"
 node "$REPO/packages/bridge/dist/cli.js" --fake --code "$CODE" --port "$PORT" \
   > "${TMPDIR:-/tmp}/couchmode-offline-check.log" 2>&1 &
 BRIDGE=$!
 trap 'kill $BRIDGE 2>/dev/null' EXIT
-sleep 25
+# A probe every 2s plus the page load: well inside this on a Fire TV Stick.
+sleep 8
 
 TOP="$(adb -s "$DEVICE" shell dumpsys activity top 2>/dev/null)"
-WEBVIEW_BACK=0
-echo "$TOP" | grep 'id/webView' | grep -qv 'G\.\.\.\.\.\.\.' && WEBVIEW_BACK=1
-check "the page loads itself once the bridge is back, with no key press" "$WEBVIEW_BACK"
+check "the page loads itself within seconds of the bridge starting, with no key press" \
+  "$([ "$(visible webView)" = 1 ] && [ "$(visible errorPanel)" = 0 ] && echo 1 || echo 0)"
 
 PAIRED=0
 grep -q "pair ok tv" "${TMPDIR:-/tmp}/couchmode-offline-check.log" && PAIRED=1

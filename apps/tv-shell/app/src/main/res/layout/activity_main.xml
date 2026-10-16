@@ -10,6 +10,10 @@
         android:layout_width="match_parent"
         android:layout_height="match_parent" />
 
+    <!--
+      Shown while the bridge is not there. Its one control is the way out when
+      the address is what is wrong; everything else happens by itself.
+    -->
     <LinearLayout
         android:id="@+id/errorPanel"
         android:layout_width="match_parent"
@@ -21,31 +25,54 @@
         android:visibility="gone">
 
         <TextView
-            android:id="@+id/errorText"
+            android:id="@+id/offlineTitle"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:gravity="center"
             android:textColor="@color/text"
-            android:textSize="26sp" />
+            android:textSize="36sp"
+            android:textStyle="bold" />
 
-        <Button
-            android:id="@+id/retryButton"
+        <TextView
+            android:id="@+id/offlineBody"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="16dp"
+            android:gravity="center"
+            android:lineSpacingMultiplier="1.2"
+            android:maxWidth="720dp"
+            android:textColor="@color/muted"
+            android:textSize="20sp" />
+
+        <LinearLayout
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:layout_marginTop="32dp"
-            android:minHeight="64dp"
-            android:minWidth="240dp"
-            android:text="@string/retry"
-            android:textSize="22sp" />
+            android:gravity="center_vertical"
+            android:orientation="horizontal">
+
+            <!-- Pulses while the shell is looking, so a still screen never reads as a frozen one. -->
+            <View
+                android:id="@+id/offlinePulse"
+                android:layout_width="12dp"
+                android:layout_height="12dp"
+                android:background="@drawable/pulse_dot" />
+
+            <TextView
+                android:id="@+id/offlineStatus"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="12dp"
+                android:textColor="@color/muted"
+                android:textSize="16sp" />
+        </LinearLayout>
 
         <Button
             android:id="@+id/settingsButton"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:layout_marginTop="16dp"
-            android:minHeight="64dp"
-            android:minWidth="240dp"
-            android:text="@string/change_settings"
-            android:textSize="22sp" />
+            android:layout_marginTop="40dp"
+            android:minWidth="280dp"
+            android:text="@string/change_settings" />
     </LinearLayout>
 </FrameLayout>

@@ -1,5 +1,7 @@
 package com.couchmode.tv
 
+import android.animation.ObjectAnimator
+import android.animation.ValueAnimator
 import android.annotation.SuppressLint
 import android.app.Activity
 import android.content.pm.ApplicationInfo
@@ -21,6 +23,7 @@ import android.widget.Button
 import android.widget.EditText
 import android.widget.LinearLayout
 import android.widget.TextView
+import java.util.concurrent.Executors
 
 /**
  * The whole Fire TV app: a fullscreen WebView pointed at the bridge, plus a
@@ -37,20 +40,28 @@ class MainActivity : Activity() {
         const val MENU_LONG_PRESS_MS = 500L
 
         /**
-         * Reload backoff after a failed page load.
+         * How often to look for the bridge while it is not there.
          *
-         * The bridge lives on a laptop that gets closed, slept and reopened, so
-         * "the page would not load" is a normal state to pass through rather
-         * than a dead end. Capped low: someone is sitting in front of this
-         * waiting for it to come back, not reading logs.
+         * No backoff: a TCP connect on a LAN is cheap, and someone is sitting in
+         * front of this waiting. Once the bridge is up, the page should be on
+         * screen within a couple of seconds, not whenever a doubling timer next
+         * comes round.
          */
-        const val RELOAD_MIN_MS = 2_000L
-        const val RELOAD_MAX_MS = 15_000L
+        const val PROBE_INTERVAL_MS = 2_000L
+
+        /** Say "Connecting…" only if the first look takes long enough to notice. */
+        const val CONNECTING_REVEAL_MS = 600L
+
+        /** One breath of the pulsing dot, each way. */
+        const val PULSE_MS = 900L
     }
 
     private lateinit var webView: WebView
     private lateinit var errorPanel: LinearLayout
-    private lateinit var errorText: TextView
+    private lateinit var offlineTitle: TextView
+    private lateinit var offlineBody: TextView
+    private lateinit var offlineStatus: TextView
+    private var pulse: ObjectAnimator? = null
 
     private var settings = BridgeSettings("", "")
     private var showingSetup = false
@@ -68,10 +79,19 @@ class MainActivity : Activity() {
      */
     private var loadFailed = false
 
-    private val reloadHandler = Handler(Looper.getMainLooper())
-    private var reloadDelayMs = RELOAD_MIN_MS
-    private var reloadAtMs = 0L
-    private var reloadTick: Runnable? = null
+    private val watchHandler = Handler(Looper.getMainLooper())
+    private val prober = Executors.newSingleThreadExecutor()
+
+    /** The page is not on screen yet: keep looking for the bridge until it is. */
+    private var waitingForBridge = false
+
+    /** A probe is in flight or scheduled. */
+    private var watching = false
+
+    /** Bumped by stopWatching, so a probe already in flight reports to no one. */
+    private var watchGeneration = 0
+
+    private val revealConnecting = Runnable { showOffline(R.string.offline_connecting_title, null) }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -84,21 +104,31 @@ class MainActivity : Activity() {
     override fun onResume() {
         super.onResume()
         applyImmersiveMode()
-        // Coming back to the app is itself a "try now": whatever the backoff had
-        // settled on, the odds that the bridge is up have just changed.
-        if (loadFailed && !showingSetup) reloadNow()
+        pulse?.resume()
+        // Coming back to the app is itself a reason to look again: the odds
+        // that the bridge is up have just changed.
+        if (waitingForBridge && !watching && !showingSetup) startWatching()
     }
 
     override fun onStop() {
         super.onStop()
-        // Nothing to retry into while the app is not on screen.
-        cancelReload()
+        // Nothing to look for while the app is not on screen.
+        stopWatching()
+        pulse?.pause()
+    }
+
+    override fun onDestroy() {
+        super.onDestroy()
+        prober.shutdownNow()
     }
 
     // ---------------------------------------------------------------- setup
 
     private fun showSetup(error: String? = null) {
         showingSetup = true
+        stopWatching()
+        pulse?.cancel()
+        pulse = null
         setContentView(R.layout.activity_setup)
 
         val hostInput = findViewById<EditText>(R.id.hostInput)
@@ -159,9 +189,15 @@ class MainActivity : Activity() {
 
         webView = findViewById(R.id.webView)
         errorPanel = findViewById(R.id.errorPanel)
-        errorText = findViewById(R.id.errorText)
+        offlineTitle = findViewById(R.id.offlineTitle)
+        offlineBody = findViewById(R.id.offlineBody)
+        offlineStatus = findViewById(R.id.offlineStatus)
+        pulse = ObjectAnimator.ofFloat(findViewById(R.id.offlinePulse), View.ALPHA, 1f, 0.2f).apply {
+            duration = PULSE_MS
+            repeatMode = ValueAnimator.REVERSE
+            repeatCount = ValueAnimator.INFINITE
+        }
 
-        findViewById<Button>(R.id.retryButton).setOnClickListener { reloadNow() }
         findViewById<Button>(R.id.settingsButton).setOnClickListener { showSetup() }
 
         // Debug builds only: lets `adb forward` + chrome://inspect reach the page,
@@ -198,13 +234,11 @@ class MainActivity : Activity() {
             override fun onPageFinished(view: WebView, url: String) {
                 // Chromium's error page finishes loading too. Revealing the
                 // WebView here regardless is what put `ERR_CONNECTION_REFUSED`
-                // on the television instead of the panel with the Retry button.
+                // on the television instead of the shell's own panel.
                 if (loadFailed) return
-                reloadDelayMs = RELOAD_MIN_MS
-                cancelReload()
-                errorPanel.visibility = View.GONE
-                webView.visibility = View.VISIBLE
-                webView.requestFocus()
+                waitingForBridge = false
+                stopWatching()
+                hideOffline()
             }
 
             override fun onReceivedError(
@@ -216,79 +250,104 @@ class MainActivity : Activity() {
                 if (!request.isForMainFrame) return
                 Log.i(TAG, "load failed: ${error.errorCode} ${error.description}")
                 loadFailed = true
-                scheduleReload()
+                if (errorPanel.visibility != View.VISIBLE) revealConnecting.run()
+                // A probe just found the port open, so look again after the
+                // usual pause rather than at once: something that accepts
+                // connections but cannot serve the page would otherwise spin.
+                startWatching(PROBE_INTERVAL_MS)
             }
         }
 
-        loadBridge()
-    }
-
-    private fun loadBridge() {
-        cancelReload()
-        loadFailed = false
-        errorPanel.visibility = View.GONE
-        webView.visibility = View.VISIBLE
-        webView.loadUrl(settings.tvUrl())
-        webView.requestFocus()
-    }
-
-    /** Try again immediately, from the shortest backoff. The Retry button, and onResume. */
-    private fun reloadNow() {
-        reloadDelayMs = RELOAD_MIN_MS
-        loadBridge()
+        startWatching()
     }
 
     /**
-     * Keep trying, and say so.
-     *
-     * The page failing to load is not a state a remote can fix - there is
-     * nothing to type and nowhere to go - so the only useful behaviour is to
-     * keep trying and tell the room what it is waiting for. The bridge coming
-     * back then needs no press at all, which matters when it is a laptop lid
-     * being reopened in another room.
+     * Load the page. If the panel is up it stays up, over an invisible WebView,
+     * until the page has finished: the bridge coming back swaps one complete
+     * screen for another, with no blank frame in between.
      */
-    private fun scheduleReload() {
-        cancelReload()
-        reloadAtMs = System.currentTimeMillis() + reloadDelayMs
-        reloadDelayMs = (reloadDelayMs * 2).coerceAtMost(RELOAD_MAX_MS)
-
-        val tick = object : Runnable {
-            override fun run() {
-                val remaining = reloadAtMs - System.currentTimeMillis()
-                if (remaining <= 0) {
-                    showRetrying()
-                    loadFailed = false
-                    webView.loadUrl(settings.tvUrl())
-                    return
-                }
-                showLoadError(((remaining + 999) / 1000).toInt())
-                reloadHandler.postDelayed(this, 1_000)
-            }
+    private fun loadBridge() {
+        loadFailed = false
+        if (errorPanel.visibility != View.VISIBLE) {
+            webView.visibility = View.VISIBLE
+            webView.requestFocus()
         }
-        reloadTick = tick
-        tick.run()
+        webView.loadUrl(settings.tvUrl())
     }
 
-    private fun cancelReload() {
-        reloadTick?.let { reloadHandler.removeCallbacks(it) }
-        reloadTick = null
+    // ------------------------------------------------------------- watching
+
+    /**
+     * Look for the bridge until it answers, then load the page.
+     *
+     * The bridge lives on a laptop that gets closed, slept and reopened, often
+     * in another room, so "not there yet" is a state to wait in, not an error
+     * to dismiss. Nothing on the remote can fix it, so the useful behaviour is
+     * to keep looking, say plainly what is wrong, and load the page the moment
+     * it can - with no key press, because the person who fixed it may be on
+     * the other side of the house.
+     */
+    private fun startWatching(delayMs: Long = 0) {
+        stopWatching()
+        waitingForBridge = true
+        watching = true
+        val generation = watchGeneration
+        if (errorPanel.visibility != View.VISIBLE) {
+            watchHandler.postDelayed(revealConnecting, CONNECTING_REVEAL_MS)
+        }
+        watchHandler.postDelayed({ probe(generation) }, delayMs)
     }
 
-    private fun showLoadError(retryInSeconds: Int) {
-        errorText.text = getString(R.string.error_load_failed, settings.host, retryInSeconds)
-        revealErrorPanel()
+    private fun stopWatching() {
+        watchGeneration += 1
+        watching = false
+        watchHandler.removeCallbacksAndMessages(null)
     }
 
-    private fun showRetrying() {
-        errorText.text = getString(R.string.error_load_retrying, settings.host)
-        revealErrorPanel()
+    private fun probe(generation: Int) {
+        val host = settings.host
+        prober.execute {
+            val reach = BridgeReach.probe(host)
+            watchHandler.post { onProbe(generation, reach) }
+        }
     }
 
-    private fun revealErrorPanel() {
+    private fun onProbe(generation: Int, reach: BridgeReach) {
+        if (generation != watchGeneration) return
+        watchHandler.removeCallbacks(revealConnecting)
+        when (reach) {
+            BridgeReach.UP -> {
+                stopWatching()
+                loadBridge()
+                return
+            }
+            BridgeReach.NOT_RUNNING ->
+                showOffline(R.string.offline_not_running_title, R.string.offline_not_running_body)
+            BridgeReach.UNREACHABLE ->
+                showOffline(R.string.offline_unreachable_title, R.string.offline_unreachable_body)
+        }
+        watchHandler.postDelayed({ probe(generation) }, PROBE_INTERVAL_MS)
+    }
+
+    private fun showOffline(title: Int, body: Int?) {
+        offlineTitle.setText(title)
+        if (body != null) offlineBody.setText(body)
+        offlineBody.visibility = if (body != null) View.VISIBLE else View.GONE
+        offlineStatus.text = getString(R.string.offline_looking, settings.host)
         if (errorPanel.visibility == View.VISIBLE) return
-        webView.visibility = View.GONE
+        // INVISIBLE, not GONE: the page keeps its full size to load into behind
+        // the panel, and still cannot take focus from the panel's button.
+        webView.visibility = View.INVISIBLE
         errorPanel.visibility = View.VISIBLE
-        findViewById<Button>(R.id.retryButton).requestFocus()
+        pulse?.start()
+        findViewById<Button>(R.id.settingsButton).requestFocus()
+    }
+
+    private fun hideOffline() {
+        pulse?.cancel()
+        errorPanel.visibility = View.GONE
+        webView.visibility = View.VISIBLE
+        webView.requestFocus()
     }
 
     // ----------------------------------------------------------------- keys
